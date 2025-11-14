@@ -1,0 +1,340 @@
+import pandas as pd
+import numpy as np
+import joblib
+from datetime import datetime
+from data_collector import TradierDataCollector
+from feature_engineering import FeatureEngineering
+import warnings
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+warnings.filterwarnings('ignore')
+
+class TradingPredictor:
+    """
+    Real-time trading predictions using trained ML models
+    """
+    
+    def __init__(self, api_token, model_prefix='spy_trading_model', model_timestamp=None):
+        """Initialize with API token and load models"""
+        self.collector = TradierDataCollector(api_token)
+        self.models = {}
+        self.load_models(model_prefix, model_timestamp)
+    
+    def load_models(self, prefix, timestamp=None):
+        """Load trained models"""
+        import glob
+        
+        if timestamp:
+            pattern = f"{prefix}_*_{timestamp}.pkl"
+        else:
+            # Find most recent models
+            pattern = f"{prefix}_*.pkl"
+        
+        model_files = sorted(glob.glob(pattern))
+        
+        if not model_files:
+            raise FileNotFoundError(f"No models found matching: {pattern}")
+        
+        for filepath in model_files:
+            parts = filepath.replace('.pkl', '').split('_')
+            model_name = '_'.join(parts[2:-1])  # Extract model name
+            self.models[model_name] = joblib.load(filepath)
+            print(f"[OK] Loaded: {model_name} from {filepath}")
+    
+    def get_current_data(self, symbol, lookback_periods=200):
+        """
+        Get recent data for making predictions
+        Need enough history to calculate indicators
+        """
+        print(f"\nFetching current data for {symbol}...")
+        
+        # Get intraday data (last few hours)
+        end_time = datetime.now()
+        start_time = end_time.replace(hour=9, minute=30)
+        
+        intraday = self.collector.get_intraday_quotes(
+            symbol,
+            start_time.strftime('%Y-%m-%d %H:%M'),
+            end_time.strftime('%Y-%m-%d %H:%M'),
+            interval='5min'
+        )
+        
+        if intraday.empty:
+            print("No intraday data available")
+            return None
+        
+        # Rename columns to match training data
+        if 'time' in intraday.columns:
+            intraday = intraday.rename(columns={'time': 'date'})
+        
+        return intraday
+    
+    def prepare_features(self, df):
+        """
+        Engineer features from raw data
+        """
+        print("Engineering features...")
+        
+        fe = FeatureEngineering(df)
+        fe.add_technical_indicators()
+        fe.add_support_resistance_levels()
+        fe.add_market_regime_features()
+        fe.add_time_features()
+        
+        # Get feature set (without creating labels since we're predicting)
+        features, full_data = fe.get_features_for_ml()
+        
+        return features, full_data
+    
+    def predict(self, symbol):
+        """
+        Make comprehensive trading prediction for a symbol
+        """
+        print("\n" + "="*80)
+        print(f"GENERATING PREDICTIONS FOR {symbol}")
+        print("="*80)
+        
+        # Get current data
+        df = self.get_current_data(symbol)
+        
+        if df is None or len(df) < 50:
+            print("Insufficient data for prediction")
+            return None
+        
+        # Prepare features
+        features, full_data = self.prepare_features(df)
+        
+        # Use only the latest data point for prediction
+        latest_features = features.iloc[-1:].copy()
+        latest_full = full_data.iloc[-1:].copy()
+        
+        # Handle NaN and inf values
+        latest_features = latest_features.replace([np.inf, -np.inf], np.nan)
+        latest_features = latest_features.fillna(latest_features.median())
+        
+        # Make predictions
+        predictions = {}
+        current_price = latest_full['close'].iloc[0]
+        
+        # 1. Trade Quality Score
+        if 'trade_quality' in self.models:
+            quality_proba = self.models['trade_quality'].predict_proba(latest_features)[0, 1]
+            predictions['trade_quality_score'] = quality_proba * 100
+            predictions['should_trade'] = quality_proba > 0.6
+        else:
+            predictions['trade_quality_score'] = None
+            predictions['should_trade'] = None
+        
+        # 2. Profit Target Probability
+        if 'profit_target' in self.models:
+            profit_proba = self.models['profit_target'].predict_proba(latest_features)[0, 1]
+            predictions['profit_probability'] = profit_proba * 100
+        else:
+            predictions['profit_probability'] = None
+        
+        # 3. Price Level Predictions
+        if 'future_high' in self.models:
+            pred_high = self.models['future_high'].predict(latest_features)[0]
+            predictions['predicted_high'] = pred_high
+            predictions['upside_target'] = ((pred_high - current_price) / current_price) * 100
+        else:
+            predictions['predicted_high'] = None
+            predictions['upside_target'] = None
+        
+        if 'future_low' in self.models:
+            pred_low = self.models['future_low'].predict(latest_features)[0]
+            predictions['predicted_low'] = pred_low
+            predictions['downside_risk'] = ((current_price - pred_low) / current_price) * 100
+        else:
+            predictions['predicted_low'] = None
+            predictions['downside_risk'] = None
+        
+        # Add context
+        predictions['current_price'] = current_price
+        predictions['symbol'] = symbol
+        predictions['timestamp'] = datetime.now().isoformat()
+        
+        # Market regime indicators
+        predictions['trend_strength'] = latest_full['trend_strength'].iloc[0] if 'trend_strength' in latest_full else None
+        predictions['choppiness'] = latest_full['choppiness'].iloc[0] if 'choppiness' in latest_full else None
+        predictions['volatility_rank'] = latest_full['volatility_rank'].iloc[0] if 'volatility_rank' in latest_full else None
+        predictions['optimal_hours'] = bool(latest_full['optimal_hours'].iloc[0]) if 'optimal_hours' in latest_full else None
+        
+        return predictions
+    
+    def format_signal(self, predictions):
+        """
+        Format prediction into actionable trading signal
+        """
+        if predictions is None:
+            return "No signal generated"
+        
+        symbol = predictions['symbol']
+        price = predictions['current_price']
+        
+        signal = []
+        signal.append(f"\n{'='*80}")
+        signal.append(f"TRADING SIGNAL: {symbol} @ ${price:.2f}")
+        signal.append(f"Time: {predictions['timestamp']}")
+        signal.append(f"{'='*80}\n")
+        
+        # Trade Quality Assessment
+        quality = predictions.get('trade_quality_score')
+        should_trade = predictions.get('should_trade')
+        
+        if quality is not None:
+            signal.append(f"[TARGET] TRADE QUALITY: {quality:.1f}/100")
+
+            if should_trade:
+                signal.append("[SIGNAL] TRADEABLE SETUP")
+            else:
+                signal.append("[AVOID] SIGNAL: LOW QUALITY SETUP")
+                signal.append("\nReasons to avoid:")
+                
+                if predictions.get('choppiness', 0) > 50:
+                    signal.append("  - Market is choppy")
+                if predictions.get('trend_strength', 0) < 20:
+                    signal.append("  - Weak trend")
+                if not predictions.get('optimal_hours', True):
+                    signal.append("  - Outside optimal trading hours")
+        
+        signal.append("")
+        
+        # Win Probability
+        profit_prob = predictions.get('profit_probability')
+        if profit_prob is not None:
+            signal.append(f"[PROBABILITY] Win Probability: {profit_prob:.1f}%")
+        
+        signal.append("")
+        
+        # Price Targets
+        signal.append("[PRICE TARGETS]")
+
+        pred_high = predictions.get('predicted_high')
+        upside = predictions.get('upside_target')
+        if pred_high is not None and upside is not None:
+            signal.append(f"  [UP] Upside Target: ${pred_high:.2f} (+{upside:.2f}%)")
+
+        pred_low = predictions.get('predicted_low')
+        downside = predictions.get('downside_risk')
+        if pred_low is not None and downside is not None:
+            signal.append(f"  [DOWN] Downside Stop:  ${pred_low:.2f} (-{downside:.2f}%)")
+        
+        # Risk/Reward
+        if upside is not None and downside is not None and downside > 0:
+            rr_ratio = upside / downside
+            signal.append(f"\n[R/R] Risk/Reward Ratio: {rr_ratio:.2f}:1")
+        
+        signal.append("")
+        
+        # Market Regime
+        signal.append("[MARKET CONDITIONS]")
+        
+        trend = predictions.get('trend_strength')
+        if trend is not None:
+            trend_status = "Strong" if trend > 40 else "Moderate" if trend > 20 else "Weak"
+            signal.append(f"  - Trend Strength: {trend_status} ({trend:.1f})")
+        
+        chop = predictions.get('choppiness')
+        if chop is not None:
+            chop_status = "High" if chop > 50 else "Moderate" if chop > 35 else "Low"
+            signal.append(f"  - Choppiness: {chop_status} ({chop:.1f})")
+        
+        vol = predictions.get('volatility_rank')
+        if vol is not None:
+            vol_status = "High" if vol > 0.7 else "Moderate" if vol > 0.3 else "Low"
+            signal.append(f"  - Volatility: {vol_status} ({vol:.2f})")
+        
+        signal.append("")
+        signal.append("="*80)
+        
+        return "\n".join(signal)
+    
+    def generate_multi_symbol_signals(self, symbols):
+        """
+        Generate signals for multiple symbols
+        Returns ranked list of opportunities
+        """
+        all_predictions = []
+        
+        for symbol in symbols:
+            try:
+                pred = self.predict(symbol)
+                if pred:
+                    all_predictions.append(pred)
+            except Exception as e:
+                print(f"Error predicting {symbol}: {e}")
+        
+        # Rank by trade quality score (handle None values)
+        all_predictions.sort(key=lambda x: x.get('trade_quality_score') or 0, reverse=True)
+        
+        return all_predictions
+    
+    def save_prediction(self, predictions, filename='prediction_log.csv'):
+        """Save prediction to log file"""
+        pred_df = pd.DataFrame([predictions])
+        
+        try:
+            existing = pd.read_csv(filename)
+            pred_df = pd.concat([existing, pred_df], ignore_index=True)
+        except FileNotFoundError:
+            pass
+        
+        pred_df.to_csv(filename, index=False)
+        print(f"\n[OK] Prediction logged to: {filename}")
+
+
+def main():
+    """Example usage"""
+    API_TOKEN = os.getenv('TRADIER_API_TOKEN')
+    
+    if not API_TOKEN:
+        print("❌ ERROR: TRADIER_API_TOKEN not found!")
+        print("\n📋 SETUP REQUIRED:")
+        print("1. Copy .env.example to .env")
+        print("2. Edit .env and add your API token")
+        print("3. Run this script again")
+        return
+    
+    print("Initializing Trading Predictor...")
+    predictor = TradingPredictor(API_TOKEN)
+    
+    # Single symbol prediction
+    symbol = 'SPY'
+    predictions = predictor.predict(symbol)
+    
+    if predictions:
+        # Display formatted signal
+        print(predictor.format_signal(predictions))
+        
+        # Save prediction
+        predictor.save_prediction(predictions)
+    
+    # Multi-symbol analysis
+    print("\n\n" + "#"*80)
+    print("SCANNING MULTIPLE SYMBOLS")
+    print("#"*80)
+    
+    symbols = ['SPY', 'QQQ']
+    all_signals = predictor.generate_multi_symbol_signals(symbols)
+    
+    print("\n[RANKED OPPORTUNITIES]")
+    print("-" * 80)
+    
+    for i, pred in enumerate(all_signals, 1):
+        quality = pred.get('trade_quality_score', 0)
+        should_trade = pred.get('should_trade', False)
+        symbol = pred['symbol']
+        price = pred['current_price']
+        
+        status = "[TRADE]" if should_trade else "[SKIP]"
+        quality_str = f"{quality:5.1f}" if quality is not None else "  N/A"
+        print(f"{i}. {symbol:5} @ ${price:7.2f} | Quality: {quality_str}/100 | {status}")
+
+
+if __name__ == "__main__":
+    main()

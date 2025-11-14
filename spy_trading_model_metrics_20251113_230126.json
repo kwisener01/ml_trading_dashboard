@@ -1,0 +1,26 @@
+{
+  "trade_quality": {
+    "accuracy": 0.875,
+    "precision": 0.5,
+    "recall": 1.0,
+    "f1": 0.6666666666666666
+  },
+  "profit_target": {
+    "accuracy": 0.875,
+    "precision": 0.875,
+    "recall": 1.0,
+    "f1": 0.9333333333333333
+  },
+  "future_high": {
+    "mae": 2.757235717773483,
+    "r2": 0.0,
+    "mean_pct_error": 0.40689202063671287,
+    "median_pct_error": 0.40270925021283577
+  },
+  "future_low": {
+    "mae": 5.76919708251954,
+    "r2": -32.163063639761674,
+    "mean_pct_error": 0.8561080660811904,
+    "median_pct_error": 0.7679048483299757
+  }
+}
