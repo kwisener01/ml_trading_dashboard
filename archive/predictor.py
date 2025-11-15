@@ -5,12 +5,6 @@ from datetime import datetime
 from data_collector import TradierDataCollector
 from feature_engineering import FeatureEngineering
 import warnings
-import os
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
 warnings.filterwarnings('ignore')
 
 class TradingPredictor:
@@ -27,51 +21,23 @@ class TradingPredictor:
     def load_models(self, prefix, timestamp=None):
         """Load trained models"""
         import glob
-        import re
-
+        
         if timestamp:
             pattern = f"{prefix}_*_{timestamp}.pkl"
         else:
             # Find most recent models
             pattern = f"{prefix}_*.pkl"
-
+        
         model_files = sorted(glob.glob(pattern))
-
+        
         if not model_files:
             raise FileNotFoundError(f"No models found matching: {pattern}")
-
+        
         for filepath in model_files:
-            # Extract model type from filename
-            # Format: spy_trading_model_<TYPE>_<TIMESTAMP>.pkl
-            # Example: spy_trading_model_trade_quality_20251113_230157.pkl
-            # We want just <TYPE> (e.g., "trade_quality")
-
-            basename = filepath.replace('.pkl', '')
-
-            # Use regex to extract the model type
-            # Pattern: prefix_<model_type>_<14digit_timestamp>
-            import re
-            pattern = f"{prefix}_(.+?)_(\\d{{8}}_\\d{{6}}|\\d{{14}})$"
-            match = re.match(pattern, basename)
-
-            if match:
-                model_type = match.group(1)
-            else:
-                # Fallback: just remove prefix and take everything before last underscore with digits
-                model_part = basename.replace(f"{prefix}_", "")
-                # Remove last part if it looks like a timestamp (8 or 14 digits)
-                parts = model_part.split('_')
-                if parts[-1].isdigit() and len(parts[-1]) in [6, 8, 14]:
-                    model_type = '_'.join(parts[:-1])
-                elif len(parts) >= 2 and parts[-2].isdigit() and parts[-1].isdigit():
-                    # Handle format like 20251113_230157
-                    model_type = '_'.join(parts[:-2])
-                else:
-                    model_type = model_part
-
-            # Only keep one model of each type (last one loaded wins)
-            self.models[model_type] = joblib.load(filepath)
-            print(f"[OK] Loaded: {model_type} from {filepath}")
+            parts = filepath.replace('.pkl', '').split('_')
+            model_name = '_'.join(parts[2:-1])  # Extract model name
+            self.models[model_name] = joblib.load(filepath)
+            print(f"✓ Loaded: {model_name} from {filepath}")
     
     def get_current_data(self, symbol, lookback_periods=200):
         """
@@ -79,76 +45,44 @@ class TradingPredictor:
         Need enough history to calculate indicators
         """
         print(f"\nFetching current data for {symbol}...")
-
-        # Use daily data (models were trained on daily data with VIX)
-        print("Using daily data (models trained on daily timeframe)...")
-        try:
-            from datetime import timedelta
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=lookback_periods)
-
-            daily = self.collector.get_historical_quotes(
-                symbol,
-                start_date.strftime('%Y-%m-%d'),
-                end_date.strftime('%Y-%m-%d')
-            )
-
-            if not daily.empty:
-                # Add VIX data
-                print("Fetching VIX data...")
-                vix_data = self.collector.get_vix_data(
-                    start_date.strftime('%Y-%m-%d'),
-                    end_date.strftime('%Y-%m-%d')
-                )
-
-                if not vix_data.empty:
-                    # Rename VIX close to vix
-                    vix_data = vix_data.rename(columns={'close': 'vix'})
-                    # Merge VIX into daily data
-                    daily = pd.merge(daily, vix_data[['date', 'vix']], on='date', how='left')
-                    # Forward fill VIX for any missing dates
-                    daily['vix'] = daily['vix'].fillna(method='ffill')
-                    print(f"VIX data added: {daily['vix'].notna().sum()} values")
-                else:
-                    print("Warning: VIX data unavailable, using median as fallback")
-                    daily['vix'] = 20.0  # Approximate VIX median
-
-                print(f"Using daily data: {len(daily)} bars with VIX")
-                return daily
-        except Exception as e:
-            print(f"Error getting daily data: {e}")
-
-        print("No data available")
-        return None
+        
+        # Get intraday data (last few hours)
+        end_time = datetime.now()
+        start_time = end_time.replace(hour=9, minute=30)
+        
+        intraday = self.collector.get_intraday_quotes(
+            symbol,
+            start_time.strftime('%Y-%m-%d %H:%M'),
+            end_time.strftime('%Y-%m-%d %H:%M'),
+            interval='5min'
+        )
+        
+        if intraday.empty:
+            print("No intraday data available")
+            return None
+        
+        # Rename columns to match training data
+        if 'time' in intraday.columns:
+            intraday = intraday.rename(columns={'time': 'date'})
+        
+        return intraday
     
     def prepare_features(self, df):
         """
         Engineer features from raw data
         """
         print("Engineering features...")
-
+        
         fe = FeatureEngineering(df)
         fe.add_technical_indicators()
         fe.add_support_resistance_levels()
         fe.add_market_regime_features()
         fe.add_time_features()
-        # Note: Vanna levels calculated separately after ML predictions
-
+        
         # Get feature set (without creating labels since we're predicting)
         features, full_data = fe.get_features_for_ml()
-
+        
         return features, full_data
-
-    def calculate_vanna_levels(self, df):
-        """
-        Calculate Vanna levels separately (not used for ML predictions)
-        """
-        print("Calculating Vanna support/resistance levels...")
-
-        fe = FeatureEngineering(df.copy())
-        fe.add_vanna_levels()
-
-        return fe.data
     
     def predict(self, symbol):
         """
@@ -165,16 +99,12 @@ class TradingPredictor:
             print("Insufficient data for prediction")
             return None
         
-        # Prepare features for ML models
+        # Prepare features
         features, full_data = self.prepare_features(df)
-
-        # Calculate Vanna levels separately (not used for ML)
-        df_with_vanna = self.calculate_vanna_levels(df)
-
+        
         # Use only the latest data point for prediction
         latest_features = features.iloc[-1:].copy()
         latest_full = full_data.iloc[-1:].copy()
-        latest_vanna = df_with_vanna.iloc[-1:]
         
         # Handle NaN and inf values
         latest_features = latest_features.replace([np.inf, -np.inf], np.nan)
@@ -183,24 +113,13 @@ class TradingPredictor:
         # Make predictions
         predictions = {}
         current_price = latest_full['close'].iloc[0]
-
-        print(f"\n[DEBUG] Making predictions with {len(latest_features.columns)} features")
-        print(f"[DEBUG] Current price: ${current_price:.2f}")
-        print(f"[DEBUG] Available models: {list(self.models.keys())}")
-
+        
         # 1. Trade Quality Score
         if 'trade_quality' in self.models:
-            try:
-                quality_proba = self.models['trade_quality'].predict_proba(latest_features)[0, 1]
-                predictions['trade_quality_score'] = quality_proba * 100
-                predictions['should_trade'] = quality_proba > 0.6
-                print(f"[DEBUG] Trade quality: {predictions['trade_quality_score']:.1f}%")
-            except Exception as e:
-                print(f"[ERROR] Trade quality prediction failed: {e}")
-                predictions['trade_quality_score'] = None
-                predictions['should_trade'] = None
+            quality_proba = self.models['trade_quality'].predict_proba(latest_features)[0, 1]
+            predictions['trade_quality_score'] = quality_proba * 100
+            predictions['should_trade'] = quality_proba > 0.6
         else:
-            print("[WARN] No trade_quality model found")
             predictions['trade_quality_score'] = None
             predictions['should_trade'] = None
         
@@ -238,36 +157,7 @@ class TradingPredictor:
         predictions['choppiness'] = latest_full['choppiness'].iloc[0] if 'choppiness' in latest_full else None
         predictions['volatility_rank'] = latest_full['volatility_rank'].iloc[0] if 'volatility_rank' in latest_full else None
         predictions['optimal_hours'] = bool(latest_full['optimal_hours'].iloc[0]) if 'optimal_hours' in latest_full else None
-
-        # Vanna levels (support and resistance with strength values)
-        if 'vanna_resistance_1' in latest_vanna.columns:
-            predictions['vanna_resistance_1'] = latest_vanna['vanna_resistance_1'].iloc[0]
-            predictions['vanna_resistance_1_strength'] = latest_vanna.get('vanna_resistance_1_strength', pd.Series([None])).iloc[0]
-        else:
-            predictions['vanna_resistance_1'] = None
-            predictions['vanna_resistance_1_strength'] = None
-
-        if 'vanna_resistance_2' in latest_vanna.columns:
-            predictions['vanna_resistance_2'] = latest_vanna['vanna_resistance_2'].iloc[0]
-            predictions['vanna_resistance_2_strength'] = latest_vanna.get('vanna_resistance_2_strength', pd.Series([None])).iloc[0]
-        else:
-            predictions['vanna_resistance_2'] = None
-            predictions['vanna_resistance_2_strength'] = None
-
-        if 'vanna_support_1' in latest_vanna.columns:
-            predictions['vanna_support_1'] = latest_vanna['vanna_support_1'].iloc[0]
-            predictions['vanna_support_1_strength'] = latest_vanna.get('vanna_support_1_strength', pd.Series([None])).iloc[0]
-        else:
-            predictions['vanna_support_1'] = None
-            predictions['vanna_support_1_strength'] = None
-
-        if 'vanna_support_2' in latest_vanna.columns:
-            predictions['vanna_support_2'] = latest_vanna['vanna_support_2'].iloc[0]
-            predictions['vanna_support_2_strength'] = latest_vanna.get('vanna_support_2_strength', pd.Series([None])).iloc[0]
-        else:
-            predictions['vanna_support_2'] = None
-            predictions['vanna_support_2_strength'] = None
-
+        
         return predictions
     
     def format_signal(self, predictions):
@@ -291,12 +181,12 @@ class TradingPredictor:
         should_trade = predictions.get('should_trade')
         
         if quality is not None:
-            signal.append(f"[TARGET] TRADE QUALITY: {quality:.1f}/100")
-
+            signal.append(f"🎯 TRADE QUALITY: {quality:.1f}/100")
+            
             if should_trade:
-                signal.append("[SIGNAL] TRADEABLE SETUP")
+                signal.append("✅ SIGNAL: TRADEABLE SETUP")
             else:
-                signal.append("[AVOID] SIGNAL: LOW QUALITY SETUP")
+                signal.append("🚫 SIGNAL: AVOID - LOW QUALITY SETUP")
                 signal.append("\nReasons to avoid:")
                 
                 if predictions.get('choppiness', 0) > 50:
@@ -311,32 +201,32 @@ class TradingPredictor:
         # Win Probability
         profit_prob = predictions.get('profit_probability')
         if profit_prob is not None:
-            signal.append(f"[PROBABILITY] Win Probability: {profit_prob:.1f}%")
+            signal.append(f"📊 Win Probability: {profit_prob:.1f}%")
         
         signal.append("")
         
         # Price Targets
-        signal.append("[PRICE TARGETS]")
-
+        signal.append("🎯 PRICE TARGETS:")
+        
         pred_high = predictions.get('predicted_high')
         upside = predictions.get('upside_target')
         if pred_high is not None and upside is not None:
-            signal.append(f"  [UP] Upside Target: ${pred_high:.2f} (+{upside:.2f}%)")
-
+            signal.append(f"  ↗️  Upside Target: ${pred_high:.2f} (+{upside:.2f}%)")
+        
         pred_low = predictions.get('predicted_low')
         downside = predictions.get('downside_risk')
         if pred_low is not None and downside is not None:
-            signal.append(f"  [DOWN] Downside Stop:  ${pred_low:.2f} (-{downside:.2f}%)")
+            signal.append(f"  ↘️  Downside Stop:  ${pred_low:.2f} (-{downside:.2f}%)")
         
         # Risk/Reward
         if upside is not None and downside is not None and downside > 0:
             rr_ratio = upside / downside
-            signal.append(f"\n[R/R] Risk/Reward Ratio: {rr_ratio:.2f}:1")
+            signal.append(f"\n💰 Risk/Reward Ratio: {rr_ratio:.2f}:1")
         
         signal.append("")
         
         # Market Regime
-        signal.append("[MARKET CONDITIONS]")
+        signal.append("📈 MARKET CONDITIONS:")
         
         trend = predictions.get('trend_strength')
         if trend is not None:
@@ -373,8 +263,8 @@ class TradingPredictor:
             except Exception as e:
                 print(f"Error predicting {symbol}: {e}")
         
-        # Rank by trade quality score (handle None values)
-        all_predictions.sort(key=lambda x: x.get('trade_quality_score') or 0, reverse=True)
+        # Rank by trade quality score
+        all_predictions.sort(key=lambda x: x.get('trade_quality_score', 0), reverse=True)
         
         return all_predictions
     
@@ -389,20 +279,12 @@ class TradingPredictor:
             pass
         
         pred_df.to_csv(filename, index=False)
-        print(f"\n[OK] Prediction logged to: {filename}")
+        print(f"\n✓ Prediction logged to: {filename}")
 
 
 def main():
     """Example usage"""
-    API_TOKEN = os.getenv('TRADIER_API_TOKEN')
-    
-    if not API_TOKEN:
-        print("❌ ERROR: TRADIER_API_TOKEN not found!")
-        print("\n📋 SETUP REQUIRED:")
-        print("1. Copy .env.example to .env")
-        print("2. Edit .env and add your API token")
-        print("3. Run this script again")
-        return
+    API_TOKEN = "YOUR_TRADIER_API_TOKEN_HERE"
     
     print("Initializing Trading Predictor...")
     predictor = TradingPredictor(API_TOKEN)
@@ -426,7 +308,7 @@ def main():
     symbols = ['SPY', 'QQQ']
     all_signals = predictor.generate_multi_symbol_signals(symbols)
     
-    print("\n[RANKED OPPORTUNITIES]")
+    print("\n📊 RANKED OPPORTUNITIES:")
     print("-" * 80)
     
     for i, pred in enumerate(all_signals, 1):
@@ -435,9 +317,8 @@ def main():
         symbol = pred['symbol']
         price = pred['current_price']
         
-        status = "[TRADE]" if should_trade else "[SKIP]"
-        quality_str = f"{quality:5.1f}" if quality is not None else "  N/A"
-        print(f"{i}. {symbol:5} @ ${price:7.2f} | Quality: {quality_str}/100 | {status}")
+        status = "✅ TRADE" if should_trade else "🚫 SKIP"
+        print(f"{i}. {symbol:5} @ ${price:7.2f} | Quality: {quality:5.1f}/100 | {status}")
 
 
 if __name__ == "__main__":

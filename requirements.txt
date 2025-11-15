@@ -7,3 +7,5 @@ streamlit>=1.29.0
 plotly>=5.18.0
 python-dotenv>=1.0.0
 scipy>=1.11.0
+boto3>=1.40.0
+pytz>=2024.1

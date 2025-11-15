@@ -1,6 +1,7 @@
-# API Keys and Secrets
+# Environment variables and secrets
 .env
-*.env
+.env.local
+.env.*.local
 
 # Python
 __pycache__/
@@ -20,30 +21,35 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 
-# Virtual Environments
+# Virtual environments
+venv/
 .venv/
 .venv_py311/
-venv/
 ENV/
 env/
 
-# Data Files (can be large)
-*.csv
+# ML Models (stored in S3, not in git)
 *.pkl
-*.json
+*.pkl.gz
 *.h5
-*.hdf5
+*.joblib
 
-# Logs
-*.log
+# Data files (stored in S3, not in git)
+*.csv
+*.csv.gz
+*.json
+!requirements.txt
+!package.json
 
-# OS Files
-.DS_Store
-Thumbs.db
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
 
 # IDE
 .vscode/
@@ -52,10 +58,14 @@ Thumbs.db
 *.swo
 *~
 
-# Jupyter Notebooks
-.ipynb_checkpoints/
-*.ipynb
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Temporary files
-*.tmp
-*.temp
+# Logs
+*.log
+logs/
+
+# Streamlit
+.streamlit/secrets.toml

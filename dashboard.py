@@ -8,9 +8,46 @@ import json
 from predictor import TradingPredictor
 import os
 from dotenv import load_dotenv
+import pytz
 
 # Load environment variables
 load_dotenv()
+
+# Set timezone to EST
+EST = pytz.timezone('US/Eastern')
+
+# Auto-download latest models from S3 on startup
+@st.cache_resource(ttl=3600)  # Cache for 1 hour
+def ensure_latest_models():
+    """
+    Download latest models from S3 when dashboard starts
+    Works on Streamlit Cloud - no local computer needed!
+    """
+    try:
+        from s3_storage import S3StorageManager
+        import glob
+
+        # Check if we have any models locally
+        local_models = glob.glob('spy_trading_model*.pkl')
+
+        if len(local_models) == 0:
+            st.info("📥 Downloading latest models from S3...")
+            storage = S3StorageManager()
+            storage.download_models(decompress=True)
+            st.success("✓ Models downloaded and ready!")
+        else:
+            # Models exist, but check if we should update (every hour)
+            storage = S3StorageManager()
+            storage.download_models(decompress=True)
+
+        return True
+    except Exception as e:
+        st.warning(f"Could not download models from S3: {e}")
+        st.info("Using local models if available")
+        return False
+
+# Download models at startup
+ensure_latest_models()
 
 # Page config
 st.set_page_config(
@@ -219,8 +256,13 @@ if 'predictions' in st.session_state:
         col1, col2, col3 = st.columns([2, 1, 1])
 
         with col1:
+            # Convert timestamp to EST for display
+            timestamp_utc = pd.to_datetime(pred['timestamp'])
+            timestamp_est = timestamp_utc.tz_localize('UTC').tz_convert(EST)
+            formatted_time = timestamp_est.strftime('%Y-%m-%d %I:%M:%S %p EST')
+
             st.markdown(f"### {pred['symbol']} @ ${pred['current_price']:.2f}")
-            st.caption(f"Last updated: {pred['timestamp']}")
+            st.caption(f"Last updated: {formatted_time}")
     
         with col2:
             quality = pred.get('trade_quality_score', 0)
@@ -276,7 +318,49 @@ if 'predictions' in st.session_state:
         pred_high = pred.get('predicted_high', current * 1.01)
         pred_low = pred.get('predicted_low', current * 0.99)
 
-        fig = go.Figure()
+        # Fetch recent price data for candlesticks
+        price_df = None
+        try:
+            from data_collector import TradierDataCollector
+            collector = TradierDataCollector(api_token)
+
+            # Get last 2 days of 5-min bars for recent context
+            now = datetime.now()
+            start = (now - timedelta(days=2)).strftime('%Y-%m-%d %H:%M')
+            end = now.strftime('%Y-%m-%d %H:%M')
+
+            price_df = collector.get_intraday_quotes(
+                symbol=symbol,
+                start_time=start,
+                end_time=end,
+                interval='5min'
+            )
+
+            # Create candlestick chart if we have data
+            if not price_df.empty and len(price_df) > 0:
+                # Take last 40 bars for clean display
+                price_df = price_df.tail(40).copy()
+
+                fig = go.Figure(data=[go.Candlestick(
+                    x=price_df.index if 'time' not in price_df.columns else price_df['time'],
+                    open=price_df['open'],
+                    high=price_df['high'],
+                    low=price_df['low'],
+                    close=price_df['close'],
+                    name='SPY',
+                    increasing_line_color='#00ff00',
+                    decreasing_line_color='#ff0000',
+                    increasing_fillcolor='#00ff00',
+                    decreasing_fillcolor='#ff0000'
+                )])
+            else:
+                # If no intraday data, create empty chart
+                fig = go.Figure()
+                st.info("Using levels view (intraday data unavailable)")
+
+        except Exception as e:
+            st.info(f"Using levels view: {str(e)}")
+            fig = go.Figure()
 
         # Entry price (current)
         fig.add_hline(
@@ -312,45 +396,53 @@ if 'predictions' in st.session_state:
                 annotation_position="right"
             )
 
-        # Add Vanna resistance levels (if available)
+        # Add Vanna resistance levels (if available) - Negative Vanna = Repellent
         if 'vanna_resistance_1' in pred and pred['vanna_resistance_1']:
+            strength = pred.get('vanna_resistance_1_strength')
+            strength_text = f" | -{abs(strength):.2f} ↔️ Repellent" if strength else ""
             fig.add_hline(
                 y=pred['vanna_resistance_1'],
                 line_dash="dash",
                 line_color="orange",
                 line_width=1,
-                annotation_text=f"Vanna R1: ${pred['vanna_resistance_1']:.2f}",
+                annotation_text=f"Vanna R1: ${pred['vanna_resistance_1']:.2f}{strength_text}",
                 annotation_position="left"
             )
 
         if 'vanna_resistance_2' in pred and pred['vanna_resistance_2']:
+            strength = pred.get('vanna_resistance_2_strength')
+            strength_text = f" | -{abs(strength):.2f} ↔️ Repellent" if strength else ""
             fig.add_hline(
                 y=pred['vanna_resistance_2'],
                 line_dash="dash",
                 line_color="orange",
                 line_width=1,
-                annotation_text=f"Vanna R2: ${pred['vanna_resistance_2']:.2f}",
+                annotation_text=f"Vanna R2: ${pred['vanna_resistance_2']:.2f}{strength_text}",
                 annotation_position="left"
             )
 
-        # Add Vanna support levels (if available)
+        # Add Vanna support levels (if available) - Positive Vanna = Attractor
         if 'vanna_support_1' in pred and pred['vanna_support_1']:
+            strength = pred.get('vanna_support_1_strength')
+            strength_text = f" | +{abs(strength):.2f} 🧲 Attractor" if strength else ""
             fig.add_hline(
                 y=pred['vanna_support_1'],
                 line_dash="dash",
                 line_color="purple",
                 line_width=1,
-                annotation_text=f"Vanna S1: ${pred['vanna_support_1']:.2f}",
+                annotation_text=f"Vanna S1: ${pred['vanna_support_1']:.2f}{strength_text}",
                 annotation_position="left"
             )
 
         if 'vanna_support_2' in pred and pred['vanna_support_2']:
+            strength = pred.get('vanna_support_2_strength')
+            strength_text = f" | +{abs(strength):.2f} 🧲 Attractor" if strength else ""
             fig.add_hline(
                 y=pred['vanna_support_2'],
                 line_dash="dash",
                 line_color="purple",
                 line_width=1,
-                annotation_text=f"Vanna S2: ${pred['vanna_support_2']:.2f}",
+                annotation_text=f"Vanna S2: ${pred['vanna_support_2']:.2f}{strength_text}",
                 annotation_position="left"
             )
 
@@ -362,14 +454,34 @@ if 'predictions' in st.session_state:
                 line_width=0
             )
 
+        # Calculate y-axis range centered on current price and Vanna levels
+        all_levels = [current, pred_high, pred_low]
+        if 'vanna_resistance_1' in pred and pred['vanna_resistance_1']:
+            all_levels.append(pred['vanna_resistance_1'])
+        if 'vanna_resistance_2' in pred and pred['vanna_resistance_2']:
+            all_levels.append(pred['vanna_resistance_2'])
+        if 'vanna_support_1' in pred and pred['vanna_support_1']:
+            all_levels.append(pred['vanna_support_1'])
+        if 'vanna_support_2' in pred and pred['vanna_support_2']:
+            all_levels.append(pred['vanna_support_2'])
+
+        # Set y-axis range with some padding
+        y_min = min(all_levels) * 0.998  # 0.2% below lowest level
+        y_max = max(all_levels) * 1.002  # 0.2% above highest level
+
         fig.update_layout(
-            title=f"{symbol} Trading Setup",
+            title=f"{symbol} Trading Setup with Vanna Levels",
             yaxis_title="Price ($)",
-            xaxis=dict(showticklabels=False, range=[0, 1]),
-            height=500,
-            showlegend=False,
-            hovermode='y'
+            xaxis_title="Time",
+            yaxis=dict(range=[y_min, y_max]),
+            height=600,
+            showlegend=True,
+            hovermode='x unified',
+            template='plotly_dark'
         )
+
+        # Update xaxis to show rangeslider for navigation
+        fig.update_xaxes(rangeslider_visible=False)
 
         st.plotly_chart(fig, use_container_width=True)
 
@@ -567,45 +679,63 @@ if 'predictions' in st.session_state:
                 for reason in reasons:
                     st.markdown(reason)
     
-        # Historical predictions log
-        st.markdown("---")
-        st.subheader("📜 Prediction History")
-    
-        try:
-            history = pd.read_csv('prediction_log.csv')
-            history['timestamp'] = pd.to_datetime(history['timestamp'])
-            history = history.sort_values('timestamp', ascending=False)
-        
-            # Display recent predictions
-            st.dataframe(
-                history[['timestamp', 'symbol', 'current_price', 'trade_quality_score', 
-                        'should_trade', 'profit_probability', 'upside_target', 'downside_risk']].head(20),
-                use_container_width=True
-            )
-        
-            # Statistics
-            col1, col2, col3 = st.columns(3)
-        
-            with col1:
-                total_signals = len(history)
-                st.metric("Total Signals", total_signals)
-        
-            with col2:
-                tradeable = history['should_trade'].sum()
-                st.metric("Tradeable Setups", tradeable, 
-                         delta=f"{(tradeable/total_signals*100):.1f}%")
-        
-            with col3:
-                avg_quality = history['trade_quality_score'].mean()
-                st.metric("Avg Quality Score", f"{avg_quality:.1f}/100")
-        
-        except FileNotFoundError:
-            st.info("No prediction history yet. Generate predictions to build history.")
+        # Keep this section for backwards compatibility but it's now moved below
 
 else:
     # Welcome screen
     st.info("👈 Configure settings in the sidebar and click 'Generate Prediction' to start")
 
+# Always show prediction history (moved outside the predictions block)
+st.markdown("---")
+st.subheader("📜 Prediction History")
+
+try:
+    history = pd.read_csv('prediction_log.csv')
+
+    # Filter to only valid predictions (with quality scores)
+    valid_history = history[history['trade_quality_score'].notna()].copy()
+
+    if len(valid_history) > 0:
+        # Convert timestamps to EST
+        valid_history['timestamp'] = pd.to_datetime(valid_history['timestamp'], utc=True)
+        valid_history['timestamp'] = valid_history['timestamp'].dt.tz_convert(EST)
+        valid_history = valid_history.sort_values('timestamp', ascending=False)
+
+        # Format for display
+        display_history = valid_history.copy()
+        display_history['timestamp'] = display_history['timestamp'].dt.strftime('%Y-%m-%d %I:%M:%S %p EST')
+
+        # Display recent predictions
+        st.dataframe(
+            display_history[['timestamp', 'symbol', 'current_price', 'trade_quality_score',
+                    'should_trade', 'profit_probability', 'upside_target', 'downside_risk']].head(20),
+            use_container_width=True
+        )
+
+        # Statistics
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            total_signals = len(valid_history)
+            st.metric("Total Signals", total_signals)
+
+        with col2:
+            tradeable = valid_history['should_trade'].sum()
+            st.metric("Tradeable Setups", int(tradeable),
+                     delta=f"{(tradeable/total_signals*100):.1f}%")
+
+        with col3:
+            avg_quality = valid_history['trade_quality_score'].mean()
+            st.metric("Avg Quality Score", f"{avg_quality:.1f}/100")
+    else:
+        st.info("No valid predictions yet. Generate predictions to build history.")
+
+except FileNotFoundError:
+    st.info("No prediction history yet. Generate predictions to build history.")
+
+# Example chart (only show if no active predictions)
+if 'predictions' not in st.session_state:
+    st.markdown("---")
     # Show example output with actual SPY candlestick data
     st.markdown("### 📊 Example Trading Setup")
 
@@ -684,13 +814,13 @@ else:
         annotation_position="right"
     )
 
-    # Vanna Resistance Levels
+    # Vanna Resistance Levels (Negative Vanna = Repellent)
     fig_example.add_hline(
         y=vanna_resistance_1,
         line_dash="dash",
         line_color="orange",
         line_width=1,
-        annotation_text=f"Vanna R1: ${vanna_resistance_1:.2f}",
+        annotation_text=f"Vanna R1: ${vanna_resistance_1:.2f} | -0.32 ↔️ Repellent",
         annotation_position="left"
     )
 
@@ -699,17 +829,17 @@ else:
         line_dash="dash",
         line_color="orange",
         line_width=1,
-        annotation_text=f"Vanna R2: ${vanna_resistance_2:.2f}",
+        annotation_text=f"Vanna R2: ${vanna_resistance_2:.2f} | -0.18 ↔️ Repellent",
         annotation_position="left"
     )
 
-    # Vanna Support Levels
+    # Vanna Support Levels (Positive Vanna = Attractor)
     fig_example.add_hline(
         y=vanna_support_1,
         line_dash="dash",
         line_color="purple",
         line_width=1,
-        annotation_text=f"Vanna S1: ${vanna_support_1:.2f}",
+        annotation_text=f"Vanna S1: ${vanna_support_1:.2f} | +0.28 🧲 Attractor",
         annotation_position="left"
     )
 
@@ -718,7 +848,7 @@ else:
         line_dash="dash",
         line_color="purple",
         line_width=1,
-        annotation_text=f"Vanna S2: ${vanna_support_2:.2f}",
+        annotation_text=f"Vanna S2: ${vanna_support_2:.2f} | +0.41 🧲 Attractor",
         annotation_position="left"
     )
 
