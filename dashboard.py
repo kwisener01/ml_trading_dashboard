@@ -58,19 +58,33 @@ st.markdown("---")
 with st.sidebar:
     st.header("⚙️ Configuration")
 
-    # Get token from environment or allow override
-    env_token = os.getenv('TRADIER_API_TOKEN', '')
+    # Get token from Streamlit secrets (cloud) or environment (.env file)
+    api_token = None
 
-    if env_token:
-        st.success("✓ API token loaded from .env")
-        api_token = env_token
-        # Show masked token
-        masked_token = env_token[:4] + "..." + env_token[-4:] if len(env_token) > 8 else "****"
-        st.caption(f"Token: {masked_token}")
-    else:
-        st.warning("⚠️ No .env file found")
-        api_token = st.text_input("Tradier API Token", type="password",
-                                   help="Create a .env file with TRADIER_API_TOKEN=your_token")
+    # Try Streamlit secrets first (for cloud deployment)
+    try:
+        if 'TRADIER_API_TOKEN' in st.secrets:
+            api_token = st.secrets['TRADIER_API_TOKEN']
+            st.success("✓ API token loaded from Streamlit secrets")
+            # Show masked token
+            masked_token = api_token[:4] + "..." + api_token[-4:] if len(api_token) > 8 else "****"
+            st.caption(f"Token: {masked_token}")
+    except:
+        pass
+
+    # If not in secrets, try environment variable
+    if not api_token:
+        env_token = os.getenv('TRADIER_API_TOKEN', '')
+        if env_token:
+            api_token = env_token
+            st.success("✓ API token loaded from .env")
+            # Show masked token
+            masked_token = env_token[:4] + "..." + env_token[-4:] if len(env_token) > 8 else "****"
+            st.caption(f"Token: {masked_token}")
+        else:
+            st.warning("⚠️ No API token found")
+            api_token = st.text_input("Tradier API Token", type="password",
+                                       help="Add to Streamlit secrets or create .env file with TRADIER_API_TOKEN=your_token")
 
     # Trading Mode Selection
     st.markdown("### 📊 Trading Mode")
