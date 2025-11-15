@@ -269,62 +269,114 @@ if 'predictions' in st.session_state:
     
         st.markdown("---")
     
-        # Price chart with targets
-        st.subheader("📊 Price Targets Visualization")
-    
+        # Price chart with targets and Vanna levels
+        st.subheader("📊 Price Targets with Vanna Levels")
+
         current = pred['current_price']
         pred_high = pred.get('predicted_high', current * 1.01)
         pred_low = pred.get('predicted_low', current * 0.99)
-    
+
         fig = go.Figure()
-    
-        # Current price line
-        fig.add_trace(go.Scatter(
-            x=[0, 1],
-            y=[current, current],
-            mode='lines',
-            name='Current Price',
-            line=dict(color='blue', width=3)
-        ))
-    
-        # Predicted high
-        fig.add_trace(go.Scatter(
-            x=[0, 1],
-            y=[pred_high, pred_high],
-            mode='lines',
-            name='Upside Target',
-            line=dict(color='green', width=2, dash='dash')
-        ))
-    
-        # Predicted low
-        fig.add_trace(go.Scatter(
-            x=[0, 1],
-            y=[pred_low, pred_low],
-            mode='lines',
-            name='Downside Stop',
-            line=dict(color='red', width=2, dash='dash')
-        ))
-    
-        # Fill area between high and low
-        fig.add_trace(go.Scatter(
-            x=[0, 1, 1, 0],
-            y=[pred_low, pred_low, pred_high, pred_high],
-            fill='toself',
-            fillcolor='rgba(128, 128, 128, 0.2)',
-            line=dict(width=0),
-            name='Expected Range',
-            showlegend=True
-        ))
-    
+
+        # Entry price (current)
+        fig.add_hline(
+            y=current,
+            line_dash="solid",
+            line_color="blue",
+            line_width=3,
+            annotation_text=f"Entry: ${current:.2f}",
+            annotation_position="right"
+        )
+
+        # Profit Target
+        if pred_high:
+            upside_pct = ((pred_high - current) / current * 100)
+            fig.add_hline(
+                y=pred_high,
+                line_dash="dot",
+                line_color="green",
+                line_width=2,
+                annotation_text=f"🎯 Target: ${pred_high:.2f} (+{upside_pct:.1f}%)",
+                annotation_position="right"
+            )
+
+        # Stop Loss
+        if pred_low:
+            downside_pct = ((current - pred_low) / current * 100)
+            fig.add_hline(
+                y=pred_low,
+                line_dash="dot",
+                line_color="red",
+                line_width=2,
+                annotation_text=f"🛑 Stop: ${pred_low:.2f} (-{downside_pct:.1f}%)",
+                annotation_position="right"
+            )
+
+        # Add Vanna resistance levels (if available)
+        if 'vanna_resistance_1' in pred and pred['vanna_resistance_1']:
+            fig.add_hline(
+                y=pred['vanna_resistance_1'],
+                line_dash="dash",
+                line_color="orange",
+                line_width=1,
+                annotation_text=f"Vanna R1: ${pred['vanna_resistance_1']:.2f}",
+                annotation_position="left"
+            )
+
+        if 'vanna_resistance_2' in pred and pred['vanna_resistance_2']:
+            fig.add_hline(
+                y=pred['vanna_resistance_2'],
+                line_dash="dash",
+                line_color="orange",
+                line_width=1,
+                annotation_text=f"Vanna R2: ${pred['vanna_resistance_2']:.2f}",
+                annotation_position="left"
+            )
+
+        # Add Vanna support levels (if available)
+        if 'vanna_support_1' in pred and pred['vanna_support_1']:
+            fig.add_hline(
+                y=pred['vanna_support_1'],
+                line_dash="dash",
+                line_color="purple",
+                line_width=1,
+                annotation_text=f"Vanna S1: ${pred['vanna_support_1']:.2f}",
+                annotation_position="left"
+            )
+
+        if 'vanna_support_2' in pred and pred['vanna_support_2']:
+            fig.add_hline(
+                y=pred['vanna_support_2'],
+                line_dash="dash",
+                line_color="purple",
+                line_width=1,
+                annotation_text=f"Vanna S2: ${pred['vanna_support_2']:.2f}",
+                annotation_position="left"
+            )
+
+        # Fill area between profit target and stop loss
+        if pred_high and pred_low:
+            fig.add_hrect(
+                y0=pred_low, y1=pred_high,
+                fillcolor="green", opacity=0.1,
+                line_width=0
+            )
+
         fig.update_layout(
-            title=f"{symbol} Price Targets",
+            title=f"{symbol} Trading Setup",
             yaxis_title="Price ($)",
-            xaxis=dict(showticklabels=False),
-            height=400,
+            xaxis=dict(showticklabels=False, range=[0, 1]),
+            height=500,
+            showlegend=False,
             hovermode='y'
         )
-    
+
         st.plotly_chart(fig, use_container_width=True)
+
+        # Chart legend
+        st.markdown("""
+        **Legend:** 🔵 Entry | 🎯 Target | 🛑 Stop | 🟠 Vanna Resistance | 🟣 Vanna Support | 🟢 Risk/Reward Zone
+        """)
 
         # Intraday chart for day trading mode
         if st.session_state.get('trading_mode') == "Day Trading (Intraday)":
@@ -553,11 +605,122 @@ if 'predictions' in st.session_state:
 else:
     # Welcome screen
     st.info("👈 Configure settings in the sidebar and click 'Generate Prediction' to start")
-    
-    # Show example output
-    st.markdown("### 📊 Example Output")
-    st.image("https://via.placeholder.com/800x400.png?text=Price+Target+Chart", 
-             caption="Price targets with support/resistance levels")
+
+    # Show example output with realistic Vanna levels chart
+    st.markdown("### 📊 Example Trading Setup")
+
+    # Create example chart with Vanna levels
+    current_price = 450.00
+
+    # Example Vanna levels and targets
+    vanna_resistance_1 = 455.50
+    vanna_resistance_2 = 458.00
+    vanna_support_1 = 447.50
+    vanna_support_2 = 445.00
+
+    profit_target = 453.50
+    stop_loss = 448.00
+    entry_price = current_price
+
+    # Create figure
+    fig_example = go.Figure()
+
+    # Current price / Entry
+    fig_example.add_hline(
+        y=entry_price,
+        line_dash="solid",
+        line_color="blue",
+        line_width=3,
+        annotation_text=f"Entry: ${entry_price:.2f}",
+        annotation_position="right"
+    )
+
+    # Profit Target
+    fig_example.add_hline(
+        y=profit_target,
+        line_dash="dot",
+        line_color="green",
+        line_width=2,
+        annotation_text=f"🎯 Target: ${profit_target:.2f} (+{((profit_target-entry_price)/entry_price*100):.1f}%)",
+        annotation_position="right"
+    )
+
+    # Stop Loss
+    fig_example.add_hline(
+        y=stop_loss,
+        line_dash="dot",
+        line_color="red",
+        line_width=2,
+        annotation_text=f"🛑 Stop: ${stop_loss:.2f} (-{((entry_price-stop_loss)/entry_price*100):.1f}%)",
+        annotation_position="right"
+    )
+
+    # Vanna Resistance Levels
+    fig_example.add_hline(
+        y=vanna_resistance_1,
+        line_dash="dash",
+        line_color="orange",
+        line_width=1,
+        annotation_text=f"Vanna R1: ${vanna_resistance_1:.2f}",
+        annotation_position="left"
+    )
+
+    fig_example.add_hline(
+        y=vanna_resistance_2,
+        line_dash="dash",
+        line_color="orange",
+        line_width=1,
+        annotation_text=f"Vanna R2: ${vanna_resistance_2:.2f}",
+        annotation_position="left"
+    )
+
+    # Vanna Support Levels
+    fig_example.add_hline(
+        y=vanna_support_1,
+        line_dash="dash",
+        line_color="purple",
+        line_width=1,
+        annotation_text=f"Vanna S1: ${vanna_support_1:.2f}",
+        annotation_position="left"
+    )
+
+    fig_example.add_hline(
+        y=vanna_support_2,
+        line_dash="dash",
+        line_color="purple",
+        line_width=1,
+        annotation_text=f"Vanna S2: ${vanna_support_2:.2f}",
+        annotation_position="left"
+    )
+
+    # Add shaded region for expected trading range
+    fig_example.add_hrect(
+        y0=stop_loss, y1=profit_target,
+        fillcolor="green", opacity=0.1,
+        line_width=0
+    )
+
+    fig_example.update_layout(
+        title="Example: ML Trading Setup with Vanna Levels",
+        yaxis_title="Price ($)",
+        xaxis=dict(showticklabels=False, range=[0, 1]),
+        height=500,
+        showlegend=False,
+        yaxis=dict(range=[443, 460])
+    )
+
+    st.plotly_chart(fig_example, use_container_width=True)
+
+    # Explanation
+    st.markdown("""
+    **Chart Legend:**
+    - 🔵 **Blue Line**: Entry price (current market price)
+    - 🎯 **Green Dotted**: Profit target (ML predicted high)
+    - 🛑 **Red Dotted**: Stop loss (ML predicted low)
+    - 🟠 **Orange Dashed**: Vanna resistance levels (dealer hedging creates selling pressure)
+    - 🟣 **Purple Dashed**: Vanna support levels (dealer hedging creates buying pressure)
+    - 🟢 **Green Shaded**: Expected trading range (risk/reward zone)
+    """)
     
     # Show day trading or daily trading features
     if st.session_state.get('trading_mode') == "Day Trading (Intraday)":
