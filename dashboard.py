@@ -606,24 +606,53 @@ else:
     # Welcome screen
     st.info("👈 Configure settings in the sidebar and click 'Generate Prediction' to start")
 
-    # Show example output with realistic Vanna levels chart
+    # Show example output with actual SPY candlestick data
     st.markdown("### 📊 Example Trading Setup")
 
-    # Create example chart with Vanna levels
-    current_price = 450.00
+    # Try to load actual SPY data
+    try:
+        # Try to load from CSV if available
+        if os.path.exists('spy_training_data_daily.csv'):
+            spy_df = pd.read_csv('spy_training_data_daily.csv')
+            spy_df['date'] = pd.to_datetime(spy_df['date'])
+            spy_df = spy_df.sort_values('date').tail(30)  # Last 30 days
 
-    # Example Vanna levels and targets
-    vanna_resistance_1 = 455.50
-    vanna_resistance_2 = 458.00
-    vanna_support_1 = 447.50
-    vanna_support_2 = 445.00
+            current_price = spy_df.iloc[-1]['close']
 
-    profit_target = 453.50
-    stop_loss = 448.00
-    entry_price = current_price
+            # Calculate Vanna levels based on recent price action
+            vanna_resistance_1 = spy_df['high'].tail(10).max()
+            vanna_resistance_2 = vanna_resistance_1 + (vanna_resistance_1 - current_price) * 0.5
+            vanna_support_1 = spy_df['low'].tail(10).min()
+            vanna_support_2 = vanna_support_1 - (current_price - vanna_support_1) * 0.5
 
-    # Create figure
-    fig_example = go.Figure()
+            profit_target = current_price + (current_price * 0.015)  # 1.5% target
+            stop_loss = current_price - (current_price * 0.008)  # 0.8% stop
+            entry_price = current_price
+
+            # Create candlestick chart
+            fig_example = go.Figure(data=[go.Candlestick(
+                x=spy_df['date'],
+                open=spy_df['open'],
+                high=spy_df['high'],
+                low=spy_df['low'],
+                close=spy_df['close'],
+                name='SPY'
+            )])
+        else:
+            raise FileNotFoundError("No SPY data available")
+
+    except Exception as e:
+        # Fallback to simple example if no data available
+        st.caption("(Using simulated data - click 'Generate Prediction' for real data)")
+        current_price = 450.00
+        vanna_resistance_1 = 455.50
+        vanna_resistance_2 = 458.00
+        vanna_support_1 = 447.50
+        vanna_support_2 = 445.00
+        profit_target = 453.50
+        stop_loss = 448.00
+        entry_price = current_price
+        fig_example = go.Figure()
 
     # Current price / Entry
     fig_example.add_hline(
@@ -701,25 +730,47 @@ else:
     )
 
     fig_example.update_layout(
-        title="Example: ML Trading Setup with Vanna Levels",
+        title="SPY - Example Trading Setup with Vanna Levels",
         yaxis_title="Price ($)",
-        xaxis=dict(showticklabels=False, range=[0, 1]),
-        height=500,
+        xaxis_title="Date" if os.path.exists('spy_training_data_daily.csv') else "",
+        height=600,
         showlegend=False,
-        yaxis=dict(range=[443, 460])
+        xaxis_rangeslider_visible=False,  # Hide rangeslider for cleaner look
     )
 
     st.plotly_chart(fig_example, use_container_width=True)
 
+    # Show current stats
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Entry Price", f"${entry_price:.2f}")
+    with col2:
+        upside = ((profit_target - entry_price) / entry_price * 100)
+        st.metric("Profit Target", f"${profit_target:.2f}", f"+{upside:.1f}%")
+    with col3:
+        downside = ((entry_price - stop_loss) / entry_price * 100)
+        st.metric("Stop Loss", f"${stop_loss:.2f}", f"-{downside:.1f}%", delta_color="inverse")
+    with col4:
+        rr = upside / downside if downside > 0 else 0
+        st.metric("Risk/Reward", f"{rr:.2f}:1")
+
     # Explanation
+    st.markdown("---")
     st.markdown("""
     **Chart Legend:**
+    - 📊 **Candlesticks**: Actual SPY price action (last 30 days)
     - 🔵 **Blue Line**: Entry price (current market price)
-    - 🎯 **Green Dotted**: Profit target (ML predicted high)
-    - 🛑 **Red Dotted**: Stop loss (ML predicted low)
-    - 🟠 **Orange Dashed**: Vanna resistance levels (dealer hedging creates selling pressure)
-    - 🟣 **Purple Dashed**: Vanna support levels (dealer hedging creates buying pressure)
+    - 🎯 **Green Dotted**: Profit target (ML predicted high, +1.5%)
+    - 🛑 **Red Dotted**: Stop loss (ML predicted low, -0.8%)
+    - 🟠 **Orange Dashed**: Vanna resistance levels (options dealer hedging creates selling pressure)
+    - 🟣 **Purple Dashed**: Vanna support levels (options dealer hedging creates buying pressure)
     - 🟢 **Green Shaded**: Expected trading range (risk/reward zone)
+
+    **How to Use:**
+    1. Enter at blue line (current price)
+    2. Take profit at green dotted line (target)
+    3. Stop out at red dotted line (protective stop)
+    4. Watch Vanna levels for potential reversals
     """)
     
     # Show day trading or daily trading features
