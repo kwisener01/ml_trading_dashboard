@@ -94,7 +94,26 @@ class TradingPredictor:
             )
 
             if not daily.empty:
-                print(f"Using daily data: {len(daily)} bars")
+                # Add VIX data
+                print("Fetching VIX data...")
+                vix_data = self.collector.get_vix_data(
+                    start_date.strftime('%Y-%m-%d'),
+                    end_date.strftime('%Y-%m-%d')
+                )
+
+                if not vix_data.empty:
+                    # Rename VIX close to vix
+                    vix_data = vix_data.rename(columns={'close': 'vix'})
+                    # Merge VIX into daily data
+                    daily = pd.merge(daily, vix_data[['date', 'vix']], on='date', how='left')
+                    # Forward fill VIX for any missing dates
+                    daily['vix'] = daily['vix'].fillna(method='ffill')
+                    print(f"VIX data added: {daily['vix'].notna().sum()} values")
+                else:
+                    print("Warning: VIX data unavailable, using median as fallback")
+                    daily['vix'] = 20.0  # Approximate VIX median
+
+                print(f"Using daily data: {len(daily)} bars with VIX")
                 return daily
         except Exception as e:
             print(f"Error getting daily data: {e}")
