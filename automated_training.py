@@ -63,10 +63,11 @@ def run_automated_training():
         fe.add_technical_indicators()
         fe.add_support_resistance_levels()
         fe.add_market_regime_features()
-        fe.add_target_variables(lookahead=1)  # Predict 1 day ahead
+        fe.add_time_features()
+        fe.create_target_labels()  # Create ML labels
 
         # Get processed data
-        df_processed = fe.get_data()
+        features, df_processed = fe.get_features_for_ml()
 
         # Save processed dataset
         df_processed.to_csv('spy_ml_dataset.csv', index=False)
