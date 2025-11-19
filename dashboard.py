@@ -446,6 +446,37 @@ if 'predictions' in st.session_state:
                 annotation_position="left"
             )
 
+        # Add GEX (Gamma Exposure) hedge levels
+        if 'gex_zero_level' in pred and pred['gex_zero_level']:
+            fig.add_hline(
+                y=pred['gex_zero_level'],
+                line_dash="dashdot",
+                line_color="cyan",
+                line_width=2,
+                annotation_text=f"GEX Flip: ${pred['gex_zero_level']:.2f} ⚡",
+                annotation_position="right"
+            )
+
+        if 'gex_support' in pred and pred['gex_support']:
+            fig.add_hline(
+                y=pred['gex_support'],
+                line_dash="dot",
+                line_color="lime",
+                line_width=1,
+                annotation_text=f"GEX Support: ${pred['gex_support']:.0f} (Dealers BUY)",
+                annotation_position="right"
+            )
+
+        if 'gex_resistance' in pred and pred['gex_resistance']:
+            fig.add_hline(
+                y=pred['gex_resistance'],
+                line_dash="dot",
+                line_color="magenta",
+                line_width=1,
+                annotation_text=f"GEX Resistance: ${pred['gex_resistance']:.0f} (Dealers SELL)",
+                annotation_position="right"
+            )
+
         # Fill area between profit target and stop loss
         if pred_high and pred_low:
             fig.add_hrect(
@@ -454,7 +485,7 @@ if 'predictions' in st.session_state:
                 line_width=0
             )
 
-        # Calculate y-axis range centered on current price and Vanna levels
+        # Calculate y-axis range centered on current price and all levels
         all_levels = [current, pred_high, pred_low]
         if 'vanna_resistance_1' in pred and pred['vanna_resistance_1']:
             all_levels.append(pred['vanna_resistance_1'])
@@ -464,13 +495,20 @@ if 'predictions' in st.session_state:
             all_levels.append(pred['vanna_support_1'])
         if 'vanna_support_2' in pred and pred['vanna_support_2']:
             all_levels.append(pred['vanna_support_2'])
+        # Add GEX levels to range
+        if 'gex_support' in pred and pred['gex_support']:
+            all_levels.append(pred['gex_support'])
+        if 'gex_resistance' in pred and pred['gex_resistance']:
+            all_levels.append(pred['gex_resistance'])
+        if 'gex_zero_level' in pred and pred['gex_zero_level']:
+            all_levels.append(pred['gex_zero_level'])
 
         # Set y-axis range with some padding
         y_min = min(all_levels) * 0.998  # 0.2% below lowest level
         y_max = max(all_levels) * 1.002  # 0.2% above highest level
 
         fig.update_layout(
-            title=f"{symbol} Trading Setup with Vanna Levels",
+            title=f"{symbol} Trading Setup with Vanna & GEX Levels",
             yaxis_title="Price ($)",
             xaxis_title="Time",
             yaxis=dict(range=[y_min, y_max]),
@@ -487,8 +525,16 @@ if 'predictions' in st.session_state:
 
         # Chart legend
         st.markdown("""
-        **Legend:** 🔵 Entry | 🎯 Target | 🛑 Stop | 🟠 Vanna Resistance | 🟣 Vanna Support | 🟢 Risk/Reward Zone
+        **Legend:** 🔵 Entry | 🎯 Target | 🛑 Stop | 🟠 Vanna R | 🟣 Vanna S | ⚡ GEX Flip | 💚 GEX Support | 💜 GEX Resistance
         """)
+
+        # GEX Regime indicator
+        if pred.get('gex_regime'):
+            regime = pred['gex_regime']
+            if regime == 'positive':
+                st.success("📊 **GEX Regime: POSITIVE** - Mean reversion mode (fade extremes)")
+            else:
+                st.warning("📊 **GEX Regime: NEGATIVE** - Momentum mode (trend following)")
 
         # Intraday chart for day trading mode
         if st.session_state.get('trading_mode') == "Day Trading (Intraday)":

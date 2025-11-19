@@ -268,6 +268,32 @@ class TradingPredictor:
             predictions['vanna_support_2'] = None
             predictions['vanna_support_2_strength'] = None
 
+        # GEX (Gamma Exposure) levels for hedge pressure
+        try:
+            from gex_calculator import GEXCalculator
+            gex_calc = GEXCalculator(self.api_token)
+            gex_df, gex_levels = gex_calc.calculate_gex(symbol)
+
+            if gex_levels:
+                predictions['gex_support'] = gex_levels.get('max_gex_strike')
+                predictions['gex_resistance'] = gex_levels.get('min_gex_strike')
+                predictions['gex_zero_level'] = gex_levels.get('zero_gex_level')
+                predictions['gex_regime'] = 'positive' if gex_levels.get('total_gex', 0) > 0 else 'negative'
+                predictions['gex_current'] = gex_levels.get('current_gex')
+            else:
+                predictions['gex_support'] = None
+                predictions['gex_resistance'] = None
+                predictions['gex_zero_level'] = None
+                predictions['gex_regime'] = None
+                predictions['gex_current'] = None
+        except Exception as e:
+            print(f"[WARNING] Could not calculate GEX levels: {e}")
+            predictions['gex_support'] = None
+            predictions['gex_resistance'] = None
+            predictions['gex_zero_level'] = None
+            predictions['gex_regime'] = None
+            predictions['gex_current'] = None
+
         return predictions
     
     def format_signal(self, predictions):
