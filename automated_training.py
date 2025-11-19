@@ -31,8 +31,8 @@ def run_automated_training():
         collector = TradierDataCollector(api_token)
         data_dict = collector.collect_training_data(
             symbol='SPY',
-            days_back=180,      # 6 months - more recent for day trading
-            interval='5min'     # 5-min bars for precise entries
+            days_back=365,      # 1 year - need 200+ for SMA 200 indicator
+            interval='daily'    # Daily bars for reliable training
         )
 
         # Extract DataFrame from the returned dictionary
