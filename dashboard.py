@@ -9,6 +9,7 @@ from predictor import TradingPredictor
 import os
 from dotenv import load_dotenv
 import pytz
+import time
 
 # Load environment variables
 load_dotenv()
@@ -138,12 +139,62 @@ with st.sidebar:
         st.markdown("### ⏰ Intraday Settings")
         interval = st.selectbox("Chart Interval", ['5min', '15min', '1min'], index=0)
 
-        # Show market hours status
-        now = datetime.now()
+        # Auto-refresh settings
+        st.markdown("### 🔄 Auto-Refresh")
+        auto_refresh = st.checkbox("Enable Auto-Refresh", value=False)
+
+        if auto_refresh:
+            # Set refresh interval based on chart interval
+            refresh_intervals = {'1min': 60, '5min': 300, '15min': 900}
+            refresh_seconds = refresh_intervals.get(interval, 300)
+            refresh_ms = refresh_seconds * 1000
+
+            st.caption(f"Refreshing every {refresh_seconds // 60} min")
+
+            # JavaScript-based auto-refresh for reliability
+            st.markdown(
+                f"""
+                <script>
+                    var refreshInterval = {refresh_ms};
+                    var countdown = refreshInterval / 1000;
+
+                    function updateCountdown() {{
+                        var mins = Math.floor(countdown / 60);
+                        var secs = countdown % 60;
+                        var display = mins + ":" + (secs < 10 ? "0" : "") + secs;
+                        var elem = document.getElementById("countdown-display");
+                        if (elem) elem.innerText = "Next refresh: " + display;
+
+                        if (countdown <= 0) {{
+                            window.location.reload();
+                        }} else {{
+                            countdown--;
+                            setTimeout(updateCountdown, 1000);
+                        }}
+                    }}
+
+                    // Start countdown
+                    setTimeout(updateCountdown, 1000);
+                </script>
+                <p id="countdown-display" style="font-size: 12px; color: gray;">Starting countdown...</p>
+                """,
+                unsafe_allow_html=True
+            )
+
+            # Also trigger prediction generation on auto-refresh
+            st.session_state['generate_prediction'] = True
+            st.session_state['trading_mode'] = trading_mode
+            st.session_state['interval'] = interval
+
+        # Show market hours status (in EST)
+        now = datetime.now(EST)
         market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
         market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
         optimal_start = now.replace(hour=10, minute=0, second=0, microsecond=0)
         optimal_end = now.replace(hour=15, minute=0, second=0, microsecond=0)
+
+        # Display current EST time
+        st.caption(f"🕐 {now.strftime('%I:%M %p EST')}")
 
         if now < market_open:
             st.warning(f"⏸️ Pre-market ({(market_open - now).seconds // 60} min to open)")
@@ -164,6 +215,8 @@ with st.sidebar:
         st.session_state['generate_prediction'] = True
         st.session_state['trading_mode'] = trading_mode
         st.session_state['interval'] = interval
+        if 'last_refresh' in st.session_state:
+            st.session_state['last_refresh'] = time.time()  # Reset timer on manual refresh
     
     st.markdown("---")
     st.markdown("### 📊 Model Info")
@@ -206,6 +259,56 @@ with st.sidebar:
         - Support/Resistance levels
         - Price targets
         - **When NOT to trade** (most important)
+        """)
+
+    # Trading Guidebook
+    st.markdown("---")
+    st.markdown("### 📖 Trading Guidebook")
+
+    with st.expander("🎯 Combined Hedge Levels", expanded=False):
+        st.image("Vanna_Gamma_Hedge.png", use_container_width=True)
+        st.caption("""
+        **Key Zones:**
+        - 🟢 **BOUNCE ZONE**: Strong support, dealers BUY
+        - 🔴 **REJECTION ZONE**: Strong resistance, dealers SELL
+        - ⚡ **GEX Flip**: Above = mean reversion, Below = momentum
+        """)
+
+    with st.expander("📊 GEX Regime Behavior", expanded=False):
+        if os.path.exists("gex_regime_diagram.png"):
+            st.image("gex_regime_diagram.png", use_container_width=True)
+        st.caption("""
+        **Positive GEX** (Mean Reversion):
+        - Fade extremes, sell rallies, buy dips
+        - Tight ranges expected
+
+        **Negative GEX** (Momentum):
+        - Follow the trend, chase breaks
+        - Large moves expected
+        """)
+
+    with st.expander("🧲 Vanna Level Reactions", expanded=False):
+        if os.path.exists("vanna_reaction_diagram.png"):
+            st.image("vanna_reaction_diagram.png", use_container_width=True)
+        st.caption("""
+        **Positive Vanna** (Support):
+        - Acts as magnet, pulls price down
+        - Strong bounce expected
+
+        **Negative Vanna** (Resistance):
+        - Repels price away
+        - Rejection expected
+        """)
+
+    with st.expander("📋 Trading Playbook", expanded=False):
+        if os.path.exists("trading_playbook_diagram.png"):
+            st.image("trading_playbook_diagram.png", use_container_width=True)
+        st.caption("""
+        **Quick Actions:**
+        - At GEX Support → LONG
+        - At GEX Resistance → SHORT/WAIT
+        - Above GEX Flip → FADE rallies
+        - Below GEX Flip → FOLLOW trend
         """)
 
 # Main content
@@ -324,8 +427,8 @@ if 'predictions' in st.session_state:
             from data_collector import TradierDataCollector
             collector = TradierDataCollector(api_token)
 
-            # Get last 2 days of 5-min bars for recent context
-            now = datetime.now()
+            # Get last 2 days of 5-min bars for recent context (EST)
+            now = datetime.now(EST)
             start = (now - timedelta(days=2)).strftime('%Y-%m-%d %H:%M')
             end = now.strftime('%Y-%m-%d %H:%M')
 
@@ -394,21 +497,21 @@ if 'predictions' in st.session_state:
         if resistance_top and resistance_bottom and resistance_top > current:
             fig.add_hrect(
                 y0=resistance_bottom, y1=resistance_top,
-                fillcolor="rgba(255, 0, 0, 0.15)",
+                fillcolor="rgba(255, 82, 82, 0.25)",
                 line_width=0
             )
             # Add label annotation separately for better positioning
             fig.add_annotation(
-                x=0.02, y=resistance_top,
+                x=0.5, y=(resistance_top + resistance_bottom) / 2,
                 xref="paper", yref="y",
-                text="<b>REJECTION<br>ZONE</b>",
+                text="<b>REJECTION ZONE</b><br>Strong Resistance",
                 showarrow=False,
-                font=dict(size=10, color="darkred"),
-                bgcolor="rgba(255, 200, 200, 0.9)",
-                bordercolor="red",
-                borderwidth=1,
-                xanchor="left",
-                yanchor="top"
+                font=dict(size=11, color="white"),
+                bgcolor="rgba(213, 0, 0, 0.9)",
+                bordercolor="white",
+                borderwidth=2,
+                xanchor="center",
+                yanchor="middle"
             )
 
         # Add SUPPORT ZONE (green shaded area) - between Vanna S1 and GEX support
@@ -430,21 +533,21 @@ if 'predictions' in st.session_state:
         if support_top and support_bottom and support_bottom < current:
             fig.add_hrect(
                 y0=support_bottom, y1=support_top,
-                fillcolor="rgba(0, 255, 0, 0.15)",
+                fillcolor="rgba(0, 230, 118, 0.25)",
                 line_width=0
             )
             # Add label annotation separately for better positioning
             fig.add_annotation(
-                x=0.02, y=support_bottom,
+                x=0.5, y=(support_top + support_bottom) / 2,
                 xref="paper", yref="y",
-                text="<b>BOUNCE<br>ZONE</b>",
+                text="<b>BOUNCE ZONE</b><br>Strong Support",
                 showarrow=False,
-                font=dict(size=10, color="darkgreen"),
-                bgcolor="rgba(200, 255, 200, 0.9)",
-                bordercolor="green",
-                borderwidth=1,
-                xanchor="left",
-                yanchor="bottom"
+                font=dict(size=11, color="white"),
+                bgcolor="rgba(0, 200, 83, 0.9)",
+                bordercolor="white",
+                borderwidth=2,
+                xanchor="center",
+                yanchor="middle"
             )
 
         # Entry price (current) - Bold blue line like in reference
@@ -453,12 +556,12 @@ if 'predictions' in st.session_state:
             line_dash="solid",
             line_color="#2196F3",
             line_width=3,
-            annotation_text=f"<b>Current: ${current:.2f}</b>",
+            annotation_text=f"<b>CURRENT: ${current:.2f}</b>",
             annotation_position="left",
             annotation=dict(
-                font=dict(size=11, color="#2196F3"),
-                bgcolor="white",
-                bordercolor="#2196F3",
+                font=dict(size=12, color="white"),
+                bgcolor="#2196F3",
+                bordercolor="white",
                 borderwidth=1
             )
         )
@@ -469,10 +572,15 @@ if 'predictions' in st.session_state:
             fig.add_hline(
                 y=pred_high,
                 line_dash="dot",
-                line_color="green",
+                line_color="#00E676",
                 line_width=2,
-                annotation_text=f"Target: ${pred_high:.2f} (+{upside_pct:.1f}%)",
-                annotation_position="right"
+                annotation_text=f"<b>TARGET: ${pred_high:.2f}</b> (+{upside_pct:.1f}%)",
+                annotation_position="right",
+                annotation=dict(
+                    font=dict(size=10, color="white"),
+                    bgcolor="#00C853",
+                    borderwidth=1
+                )
             )
 
         # Stop Loss - only if valid
@@ -481,60 +589,85 @@ if 'predictions' in st.session_state:
             fig.add_hline(
                 y=pred_low,
                 line_dash="dot",
-                line_color="red",
+                line_color="#FF5252",
                 line_width=2,
-                annotation_text=f"Stop: ${pred_low:.2f} (-{downside_pct:.1f}%)",
-                annotation_position="right"
+                annotation_text=f"<b>STOP: ${pred_low:.2f}</b> (-{downside_pct:.1f}%)",
+                annotation_position="right",
+                annotation=dict(
+                    font=dict(size=10, color="white"),
+                    bgcolor="#D50000",
+                    borderwidth=1
+                )
             )
 
         # Add Vanna resistance levels (if available and valid) - Negative Vanna = Repellent
         if vanna_r1 and level_valid(vanna_r1):
             strength = pred.get('vanna_resistance_1_strength')
-            strength_text = f" | -{abs(strength):.2f}" if strength else ""
+            strength_text = f" ({abs(strength):.1f})" if strength else ""
             fig.add_hline(
                 y=vanna_r1,
                 line_dash="dash",
-                line_color="orange",
-                line_width=1,
-                annotation_text=f"Vanna R1: ${vanna_r1:.2f}{strength_text}",
-                annotation_position="left"
+                line_color="#FF9800",
+                line_width=2,
+                annotation_text=f"<b>VANNA R1: ${vanna_r1:.2f}</b>{strength_text}",
+                annotation_position="left",
+                annotation=dict(
+                    font=dict(size=9, color="white"),
+                    bgcolor="#FF6D00",
+                    borderwidth=1
+                )
             )
 
         if vanna_r2 and level_valid(vanna_r2):
             strength = pred.get('vanna_resistance_2_strength')
-            strength_text = f" | -{abs(strength):.2f}" if strength else ""
+            strength_text = f" ({abs(strength):.1f})" if strength else ""
             fig.add_hline(
                 y=vanna_r2,
                 line_dash="dash",
-                line_color="orange",
+                line_color="#FFB74D",
                 line_width=1,
-                annotation_text=f"Vanna R2: ${vanna_r2:.2f}{strength_text}",
-                annotation_position="left"
+                annotation_text=f"<b>VANNA R2: ${vanna_r2:.2f}</b>{strength_text}",
+                annotation_position="left",
+                annotation=dict(
+                    font=dict(size=8, color="black"),
+                    bgcolor="#FFB74D",
+                    borderwidth=1
+                )
             )
 
         # Add Vanna support levels (if available and valid) - Positive Vanna = Attractor
         if vanna_s1 and level_valid(vanna_s1):
             strength = pred.get('vanna_support_1_strength')
-            strength_text = f" | +{abs(strength):.2f}" if strength else ""
+            strength_text = f" ({abs(strength):.1f})" if strength else ""
             fig.add_hline(
                 y=vanna_s1,
                 line_dash="dash",
-                line_color="purple",
-                line_width=1,
-                annotation_text=f"Vanna S1: ${vanna_s1:.2f}{strength_text}",
-                annotation_position="left"
+                line_color="#9C27B0",
+                line_width=2,
+                annotation_text=f"<b>VANNA S1: ${vanna_s1:.2f}</b>{strength_text}",
+                annotation_position="left",
+                annotation=dict(
+                    font=dict(size=9, color="white"),
+                    bgcolor="#7B1FA2",
+                    borderwidth=1
+                )
             )
 
         if vanna_s2 and level_valid(vanna_s2):
             strength = pred.get('vanna_support_2_strength')
-            strength_text = f" | +{abs(strength):.2f}" if strength else ""
+            strength_text = f" ({abs(strength):.1f})" if strength else ""
             fig.add_hline(
                 y=vanna_s2,
                 line_dash="dash",
-                line_color="purple",
+                line_color="#CE93D8",
                 line_width=1,
-                annotation_text=f"Vanna S2: ${vanna_s2:.2f}{strength_text}",
-                annotation_position="left"
+                annotation_text=f"<b>VANNA S2: ${vanna_s2:.2f}</b>{strength_text}",
+                annotation_position="left",
+                annotation=dict(
+                    font=dict(size=8, color="black"),
+                    bgcolor="#CE93D8",
+                    borderwidth=1
+                )
             )
 
         # Add GEX (Gamma Exposure) hedge levels - only if within valid range
@@ -542,13 +675,14 @@ if 'predictions' in st.session_state:
             fig.add_hline(
                 y=gex_flip,
                 line_dash="dashdot",
-                line_color="cyan",
-                line_width=2,
-                annotation_text=f"<b>GEX Flip: ${gex_flip:.2f}</b>",
+                line_color="#00BCD4",
+                line_width=3,
+                annotation_text=f"<b>GEX FLIP: ${gex_flip:.2f}</b>",
                 annotation_position="right",
                 annotation=dict(
-                    font=dict(size=9, color="cyan"),
-                    bgcolor="rgba(0, 50, 50, 0.8)"
+                    font=dict(size=10, color="white"),
+                    bgcolor="#00838F",
+                    borderwidth=1
                 )
             )
 
@@ -556,13 +690,14 @@ if 'predictions' in st.session_state:
             fig.add_hline(
                 y=gex_support,
                 line_dash="dot",
-                line_color="lime",
+                line_color="#76FF03",
                 line_width=2,
-                annotation_text=f"GEX Support: ${gex_support:.0f}<br><b>Dealers BUY</b>",
+                annotation_text=f"<b>GEX SUPPORT: ${gex_support:.0f}</b><br>Dealers BUY",
                 annotation_position="right",
                 annotation=dict(
-                    font=dict(size=8, color="lime"),
-                    bgcolor="rgba(0, 50, 0, 0.8)"
+                    font=dict(size=9, color="white"),
+                    bgcolor="#33691E",
+                    borderwidth=1
                 )
             )
 
@@ -570,13 +705,14 @@ if 'predictions' in st.session_state:
             fig.add_hline(
                 y=gex_resistance,
                 line_dash="dot",
-                line_color="magenta",
+                line_color="#E040FB",
                 line_width=2,
-                annotation_text=f"GEX Resistance: ${gex_resistance:.0f}<br><b>Dealers SELL</b>",
+                annotation_text=f"<b>GEX RESISTANCE: ${gex_resistance:.0f}</b><br>Dealers SELL",
                 annotation_position="right",
                 annotation=dict(
-                    font=dict(size=8, color="magenta"),
-                    bgcolor="rgba(50, 0, 50, 0.8)"
+                    font=dict(size=9, color="white"),
+                    bgcolor="#6A1B9A",
+                    borderwidth=1
                 )
             )
 
@@ -712,11 +848,11 @@ if 'predictions' in st.session_state:
             try:
                 from data_collector import TradierDataCollector
 
-                # Fetch intraday data
+                # Fetch intraday data (EST)
                 collector = TradierDataCollector(api_token)
-                now = datetime.now()
+                now = datetime.now(EST)
 
-                # Use today's date for market hours
+                # Use today's date for market hours (EST)
                 market_start = now.replace(hour=9, minute=30, second=0, microsecond=0)
                 market_end = now.replace(hour=16, minute=0, second=0, microsecond=0)
 
@@ -837,8 +973,8 @@ if 'predictions' in st.session_state:
                         st.metric("Day Range", f"{day_range:.2f}%")
 
                 else:
-                    # Check if market is closed
-                    now = datetime.now()
+                    # Check if market is closed (EST)
+                    now = datetime.now(EST)
                     market_open = now.replace(hour=9, minute=30)
                     market_close = now.replace(hour=16, minute=0)
 
