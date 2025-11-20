@@ -266,7 +266,7 @@ with st.sidebar:
     st.markdown("### 📖 Trading Guidebook")
 
     with st.expander("🎯 Combined Hedge Levels", expanded=False):
-        st.image("Vanna_Gamma_Hedge.png", use_container_width=True)
+        st.image("Vanna_Gamma_Hedge.png", use_column_width=True)
         st.caption("""
         **Key Zones:**
         - 🟢 **BOUNCE ZONE**: Strong support, dealers BUY
@@ -276,7 +276,7 @@ with st.sidebar:
 
     with st.expander("📊 GEX Regime Behavior", expanded=False):
         if os.path.exists("gex_regime_diagram.png"):
-            st.image("gex_regime_diagram.png", use_container_width=True)
+            st.image("gex_regime_diagram.png", use_column_width=True)
         st.caption("""
         **Positive GEX** (Mean Reversion):
         - Fade extremes, sell rallies, buy dips
@@ -289,7 +289,7 @@ with st.sidebar:
 
     with st.expander("🧲 Vanna Level Reactions", expanded=False):
         if os.path.exists("vanna_reaction_diagram.png"):
-            st.image("vanna_reaction_diagram.png", use_container_width=True)
+            st.image("vanna_reaction_diagram.png", use_column_width=True)
         st.caption("""
         **Positive Vanna** (Support):
         - Acts as magnet, pulls price down
@@ -302,7 +302,7 @@ with st.sidebar:
 
     with st.expander("📋 Trading Playbook", expanded=False):
         if os.path.exists("trading_playbook_diagram.png"):
-            st.image("trading_playbook_diagram.png", use_container_width=True)
+            st.image("trading_playbook_diagram.png", use_column_width=True)
         st.caption("""
         **Quick Actions:**
         - At GEX Support → LONG
@@ -411,9 +411,138 @@ if 'predictions' in st.session_state:
             if pred.get('upside_target') and pred.get('downside_risk'):
                 rr_ratio = pred['upside_target'] / pred['downside_risk']
                 st.metric("Risk/Reward", f"{rr_ratio:.2f}:1")
-    
+
+        # Net Hedge Pressure Indicator
         st.markdown("---")
-    
+        st.subheader("⚡ Net Hedge Pressure")
+
+        # Calculate hedge pressure based on price proximity to levels
+        current = pred['current_price']
+
+        # Get all levels
+        vanna_s1 = pred.get('vanna_support_1')
+        vanna_s2 = pred.get('vanna_support_2')
+        vanna_r1 = pred.get('vanna_resistance_1')
+        vanna_r2 = pred.get('vanna_resistance_2')
+        gex_support = pred.get('gex_support')
+        gex_resistance = pred.get('gex_resistance')
+        gex_flip = pred.get('gex_zero_level')
+        gex_regime = pred.get('gex_regime', 'unknown')
+
+        # Calculate pressure score (-100 to +100)
+        pressure_score = 0
+        pressure_factors = []
+
+        # GEX regime factor
+        if gex_regime == 'positive':
+            pressure_score += 10
+            pressure_factors.append("GEX+ (mean reversion)")
+        elif gex_regime == 'negative':
+            pressure_score -= 10
+            pressure_factors.append("GEX- (momentum)")
+
+        # Price relative to GEX flip
+        if gex_flip and current:
+            if current > gex_flip:
+                pressure_score += 15
+                pressure_factors.append(f"Above GEX Flip (${gex_flip:.0f})")
+            else:
+                pressure_score -= 15
+                pressure_factors.append(f"Below GEX Flip (${gex_flip:.0f})")
+
+        # Distance to support levels (closer = more bullish)
+        support_levels = [l for l in [vanna_s1, vanna_s2, gex_support] if l and abs(l - current) / current <= 0.05]
+        resistance_levels = [l for l in [vanna_r1, vanna_r2, gex_resistance] if l and abs(l - current) / current <= 0.05]
+
+        if support_levels:
+            nearest_support = max(support_levels)
+            support_dist = (current - nearest_support) / current * 100
+            if support_dist < 0.5:  # Very close to support
+                pressure_score += 30
+                pressure_factors.append(f"Near support (${nearest_support:.0f})")
+            elif support_dist < 1.0:
+                pressure_score += 20
+                pressure_factors.append(f"Approaching support")
+
+        if resistance_levels:
+            nearest_resistance = min(resistance_levels)
+            resistance_dist = (nearest_resistance - current) / current * 100
+            if resistance_dist < 0.5:  # Very close to resistance
+                pressure_score -= 30
+                pressure_factors.append(f"Near resistance (${nearest_resistance:.0f})")
+            elif resistance_dist < 1.0:
+                pressure_score -= 20
+                pressure_factors.append(f"Approaching resistance")
+
+        # Clamp score
+        pressure_score = max(-100, min(100, pressure_score))
+
+        # Create gauge
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            # Gauge chart
+            fig_gauge = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=pressure_score,
+                domain={'x': [0, 1], 'y': [0, 1]},
+                title={'text': "Dealer Hedge Pressure", 'font': {'size': 16}},
+                number={'suffix': "", 'font': {'size': 24}},
+                gauge={
+                    'axis': {'range': [-100, 100], 'tickwidth': 1, 'tickcolor': "white"},
+                    'bar': {'color': "#2196F3"},
+                    'bgcolor': "white",
+                    'borderwidth': 2,
+                    'bordercolor': "gray",
+                    'steps': [
+                        {'range': [-100, -50], 'color': '#FF5252', 'name': 'Strong Sell'},
+                        {'range': [-50, -20], 'color': '#FF8A80', 'name': 'Sell'},
+                        {'range': [-20, 20], 'color': '#FFE082', 'name': 'Neutral'},
+                        {'range': [20, 50], 'color': '#A5D6A7', 'name': 'Buy'},
+                        {'range': [50, 100], 'color': '#00E676', 'name': 'Strong Buy'}
+                    ],
+                    'threshold': {
+                        'line': {'color': "white", 'width': 4},
+                        'thickness': 0.75,
+                        'value': pressure_score
+                    }
+                }
+            ))
+
+            fig_gauge.update_layout(
+                height=250,
+                margin=dict(l=20, r=20, t=40, b=20),
+                paper_bgcolor='rgba(0,0,0,0)',
+                font={'color': "white"}
+            )
+
+            st.plotly_chart(fig_gauge, use_container_width=True)
+
+        with col2:
+            # Pressure interpretation
+            if pressure_score >= 50:
+                st.success("**STRONG BUY PRESSURE**")
+                st.caption("Dealers likely buying")
+            elif pressure_score >= 20:
+                st.success("**BUY PRESSURE**")
+                st.caption("Mild bullish bias")
+            elif pressure_score <= -50:
+                st.error("**STRONG SELL PRESSURE**")
+                st.caption("Dealers likely selling")
+            elif pressure_score <= -20:
+                st.error("**SELL PRESSURE**")
+                st.caption("Mild bearish bias")
+            else:
+                st.warning("**NEUTRAL**")
+                st.caption("No clear pressure")
+
+            # Show factors
+            st.markdown("**Factors:**")
+            for factor in pressure_factors[:4]:
+                st.caption(f"• {factor}")
+
+        st.markdown("---")
+
         # Price chart with targets and Vanna levels
         st.subheader("📊 Price Targets with Vanna Levels")
 
