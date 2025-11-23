@@ -18,6 +18,330 @@ load_dotenv()
 # Set timezone to EST
 EST = pytz.timezone('US/Eastern')
 
+# Helper function for VWAP calculation
+def calculate_vwap(price_df):
+    """Calculate Volume-Weighted Average Price"""
+    if price_df is None or price_df.empty or 'volume' not in price_df.columns:
+        return None
+    try:
+        typical_price = (price_df['high'] + price_df['low'] + price_df['close']) / 3
+        vwap = (typical_price * price_df['volume']).cumsum() / price_df['volume'].cumsum()
+        return vwap.iloc[-1] if len(vwap) > 0 else None
+    except:
+        return None
+
+# Multi-panel chart builder
+def create_options_flow_chart(pred, price_df, symbol):
+    """
+    Create 3-panel chart with:
+    - Panel 1: Price with options flow levels
+    - Panel 2: IV & Vanna indicators
+    - Panel 3: Dealer flow indicators
+    """
+    # Create subplot with 3 rows
+    fig = make_subplots(
+        rows=3, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+        row_heights=[0.65, 0.175, 0.175],
+        subplot_titles=(
+            f"{symbol} - Options Flow Analysis",
+            "IV & Vanna Panel",
+            "Dealer Flow Panel"
+        ),
+        specs=[[{"secondary_y": False}],
+               [{"secondary_y": False}],
+               [{"secondary_y": False}]]
+    )
+
+    current = pred['current_price']
+    gex_regime = pred.get('gex_regime', 'unknown')
+
+    # Extract all levels
+    vanna_r1 = pred.get('vanna_resistance_1')
+    vanna_r2 = pred.get('vanna_resistance_2')
+    vanna_s1 = pred.get('vanna_support_1')
+    vanna_s2 = pred.get('vanna_support_2')
+    gex_support = pred.get('gex_support')
+    gex_resistance = pred.get('gex_resistance')
+    gex_flip = pred.get('gex_zero_level')
+    put_wall = pred.get('put_wall')
+    call_wall = pred.get('call_wall')
+
+    # Calculate VWAP
+    vwap = calculate_vwap(price_df)
+
+    # ========== PANEL 1: PRICE CHART ==========
+
+    # Add candlesticks if data available
+    if price_df is not None and not price_df.empty and len(price_df) > 0:
+        x_data = price_df.index if 'time' not in price_df.columns else price_df['time']
+        fig.add_trace(go.Candlestick(
+            x=x_data,
+            open=price_df['open'],
+            high=price_df['high'],
+            low=price_df['low'],
+            close=price_df['close'],
+            name='Price',
+            increasing_line_color='#26a69a',
+            decreasing_line_color='#ef5350',
+            increasing_fillcolor='#26a69a',
+            decreasing_fillcolor='#ef5350',
+            showlegend=False
+        ), row=1, col=1)
+
+    # Background shading for dealer flow regime
+    if price_df is not None and not price_df.empty:
+        x_range = [price_df.index[0] if 'time' not in price_df.columns else price_df['time'].iloc[0],
+                   price_df.index[-1] if 'time' not in price_df.columns else price_df['time'].iloc[-1]]
+    else:
+        x_range = [0, 1]
+
+    # Add regime shading
+    if gex_regime == 'positive':
+        fig.add_vrect(
+            x0=x_range[0], x1=x_range[1],
+            fillcolor="rgba(0, 255, 0, 0.05)",
+            layer="below",
+            line_width=0,
+            row=1, col=1
+        )
+    elif gex_regime == 'negative':
+        fig.add_vrect(
+            x0=x_range[0], x1=x_range[1],
+            fillcolor="rgba(255, 0, 0, 0.05)",
+            layer="below",
+            line_width=0,
+            row=1, col=1
+        )
+
+    # Helper to check if level is within valid range
+    def level_valid(level, pct=0.05):
+        return level and abs(level - current) / current <= pct
+
+    # Add Gamma Flip (Major Pivot)
+    if gex_flip and level_valid(gex_flip):
+        fig.add_hline(
+            y=gex_flip,
+            line_dash="solid",
+            line_color="#00BCD4",
+            line_width=3,
+            annotation_text=f"GAMMA FLIP: ${gex_flip:.2f} (Major Pivot)",
+            annotation_position="right",
+            annotation=dict(font=dict(size=10, color="white"), bgcolor="#00838F"),
+            row=1, col=1
+        )
+
+    # Add GEX Walls (S/R Zones)
+    if gex_support and level_valid(gex_support):
+        fig.add_hline(
+            y=gex_support,
+            line_dash="dash",
+            line_color="#76FF03",
+            line_width=2,
+            annotation_text=f"GEX SUPPORT: ${gex_support:.0f} (S/R Zone)",
+            annotation_position="left",
+            annotation=dict(font=dict(size=9, color="white"), bgcolor="#33691E"),
+            row=1, col=1
+        )
+
+    if gex_resistance and level_valid(gex_resistance):
+        fig.add_hline(
+            y=gex_resistance,
+            line_dash="dash",
+            line_color="#E040FB",
+            line_width=2,
+            annotation_text=f"GEX RESISTANCE: ${gex_resistance:.0f} (S/R Zone)",
+            annotation_position="left",
+            annotation=dict(font=dict(size=9, color="white"), bgcolor="#6A1B9A"),
+            row=1, col=1
+        )
+
+    # Add Vanna Walls (Pressure Zones)
+    if vanna_s1 and level_valid(vanna_s1):
+        strength = pred.get('vanna_support_1_strength', 0)
+        fig.add_hline(
+            y=vanna_s1,
+            line_dash="dot",
+            line_color="#9C27B0",
+            line_width=2,
+            annotation_text=f"VANNA S1: ${vanna_s1:.2f} (Pressure Zone)",
+            annotation_position="right",
+            annotation=dict(font=dict(size=9, color="white"), bgcolor="#7B1FA2"),
+            row=1, col=1
+        )
+
+    if vanna_r1 and level_valid(vanna_r1):
+        strength = pred.get('vanna_resistance_1_strength', 0)
+        fig.add_hline(
+            y=vanna_r1,
+            line_dash="dot",
+            line_color="#FF9800",
+            line_width=2,
+            annotation_text=f"VANNA R1: ${vanna_r1:.2f} (Pressure Zone)",
+            annotation_position="right",
+            annotation=dict(font=dict(size=9, color="white"), bgcolor="#FF6D00"),
+            row=1, col=1
+        )
+
+    # Add Put/Call Walls (Magnets/Barriers)
+    if put_wall and level_valid(put_wall):
+        fig.add_hline(
+            y=put_wall,
+            line_dash="dashdot",
+            line_color="#00E676",
+            line_width=2,
+            annotation_text=f"PUT WALL: ${put_wall:.2f} (Magnet)",
+            annotation_position="left",
+            annotation=dict(font=dict(size=9, color="black"), bgcolor="#B9F6CA"),
+            row=1, col=1
+        )
+
+    if call_wall and level_valid(call_wall):
+        fig.add_hline(
+            y=call_wall,
+            line_dash="dashdot",
+            line_color="#FF5252",
+            line_width=2,
+            annotation_text=f"CALL WALL: ${call_wall:.2f} (Barrier)",
+            annotation_position="left",
+            annotation=dict(font=dict(size=9, color="black"), bgcolor="#FF8A80"),
+            row=1, col=1
+        )
+
+    # Add VWAP (Dynamic Balance Line)
+    if vwap and level_valid(vwap):
+        fig.add_hline(
+            y=vwap,
+            line_dash="solid",
+            line_color="#FFC107",
+            line_width=2,
+            annotation_text=f"VWAP: ${vwap:.2f} (Dynamic Balance)",
+            annotation_position="right",
+            annotation=dict(font=dict(size=9, color="black"), bgcolor="#FFF9C4"),
+            row=1, col=1
+        )
+
+    # Add current price line
+    fig.add_hline(
+        y=current,
+        line_dash="solid",
+        line_color="#2196F3",
+        line_width=3,
+        annotation_text=f"CURRENT: ${current:.2f}",
+        annotation_position="left",
+        annotation=dict(font=dict(size=11, color="white"), bgcolor="#2196F3"),
+        row=1, col=1
+    )
+
+    # ========== PANEL 2: IV & VANNA ==========
+
+    # Create x-axis for panels 2 and 3 (single point or time series)
+    if price_df is not None and not price_df.empty:
+        panel_x = price_df.index if 'time' not in price_df.columns else price_df['time']
+        panel_x_single = [panel_x.iloc[-1]]
+    else:
+        panel_x_single = [0]
+
+    # IV (Implied Volatility)
+    iv = pred.get('iv', 0.2) * 100  # Convert to percentage
+    iv_percentile = pred.get('iv_percentile', 50)
+    fig.add_trace(go.Scatter(
+        x=panel_x_single,
+        y=[iv],
+        mode='markers+text',
+        name='IV',
+        marker=dict(size=15, color='#FF6B6B'),
+        text=[f"IV: {iv:.1f}%<br>Percentile: {iv_percentile:.0f}"],
+        textposition="top center",
+        showlegend=True
+    ), row=2, col=1)
+
+    # Vanna (dealer bias)
+    vanna_s1_str = pred.get('vanna_support_1_strength', 0) or 0
+    vanna_r1_str = pred.get('vanna_resistance_1_strength', 0) or 0
+    net_vanna = vanna_s1_str + vanna_r1_str  # R1 is negative
+    fig.add_trace(go.Bar(
+        x=panel_x_single,
+        y=[net_vanna * 100],
+        name='Net Vanna',
+        marker_color='#4ECDC4' if net_vanna > 0 else '#FF6B6B',
+        showlegend=True
+    ), row=2, col=1)
+
+    # Vanna × IV (trend indication)
+    vanna_iv_trend = pred.get('vanna_iv_trend', 0)
+    fig.add_trace(go.Scatter(
+        x=panel_x_single,
+        y=[vanna_iv_trend],
+        mode='markers+text',
+        name='Vanna×IV',
+        marker=dict(size=12, color='#95E1D3', symbol='diamond'),
+        text=[f"{vanna_iv_trend:.1f}"],
+        textposition="bottom center",
+        showlegend=True
+    ), row=2, col=1)
+
+    # ========== PANEL 3: DEALER FLOW ==========
+
+    # Charm (time decay flows)
+    charm = pred.get('charm', 0)
+    charm_pressure = pred.get('charm_pressure', 0)
+    fig.add_trace(go.Bar(
+        x=panel_x_single,
+        y=[charm_pressure],
+        name='Charm Pressure',
+        marker_color='#A8E6CF',
+        showlegend=True
+    ), row=3, col=1)
+
+    # GEX Pressure (reaction strength)
+    gex_pressure = 50 if gex_regime == 'positive' else -50 if gex_regime == 'negative' else 0
+    fig.add_trace(go.Bar(
+        x=panel_x_single,
+        y=[gex_pressure],
+        name='GEX Pressure',
+        marker_color='#FFD93D' if gex_pressure > 0 else '#FF6B9D',
+        showlegend=True
+    ), row=3, col=1)
+
+    # Dealer Flow Score
+    dealer_score = pred.get('dealer_flow_score', 0)
+    fig.add_trace(go.Scatter(
+        x=panel_x_single,
+        y=[dealer_score],
+        mode='markers+text',
+        name='Dealer Flow Score',
+        marker=dict(size=15, color='#6BCF7F' if dealer_score > 0 else '#F76B8A',
+                   symbol='star'),
+        text=[f"Score: {dealer_score:.0f}"],
+        textposition="top center",
+        showlegend=True
+    ), row=3, col=1)
+
+    # Update layout
+    fig.update_layout(
+        height=900,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        hovermode='x unified',
+        template='plotly_dark',
+        plot_bgcolor='rgba(0, 0, 0, 0)',
+        paper_bgcolor='rgba(30, 30, 30, 1)',
+        margin=dict(l=50, r=120, t=80, b=50)
+    )
+
+    # Update y-axes labels
+    fig.update_yaxes(title_text="Price ($)", row=1, col=1)
+    fig.update_yaxes(title_text="IV/Vanna", row=2, col=1)
+    fig.update_yaxes(title_text="Dealer Flow", row=3, col=1, range=[-100, 100])
+
+    # Update x-axes
+    fig.update_xaxes(title_text="Time", row=3, col=1)
+    fig.update_xaxes(rangeslider_visible=False)
+
+    return fig
+
 # Page config - MUST be first Streamlit command
 st.set_page_config(
     page_title="ML Trading Dashboard",
@@ -597,12 +921,8 @@ if 'predictions' in st.session_state:
 
         st.markdown("---")
 
-        # Price chart with targets and Vanna levels
-        st.subheader("📊 Price Targets with Vanna Levels")
-
-        current = pred['current_price']
-        pred_high = pred.get('predicted_high', current * 1.01)
-        pred_low = pred.get('predicted_low', current * 0.99)
+        # ========== MULTI-PANEL OPTIONS FLOW CHART ==========
+        st.subheader("📊 Options Flow Analysis")
 
         # Fetch recent price data for candlesticks
         price_df = None
@@ -622,401 +942,43 @@ if 'predictions' in st.session_state:
                 interval='5min'
             )
 
-            # Create candlestick chart if we have data
+            # Take last 40 bars for clean display
             if not price_df.empty and len(price_df) > 0:
-                # Take last 40 bars for clean display
                 price_df = price_df.tail(40).copy()
 
-                fig = go.Figure(data=[go.Candlestick(
-                    x=price_df.index if 'time' not in price_df.columns else price_df['time'],
-                    open=price_df['open'],
-                    high=price_df['high'],
-                    low=price_df['low'],
-                    close=price_df['close'],
-                    name=symbol,
-                    increasing_line_color='#26a69a',
-                    decreasing_line_color='#ef5350',
-                    increasing_fillcolor='#26a69a',
-                    decreasing_fillcolor='#ef5350'
-                )])
-            else:
-                # If no intraday data, create empty chart
-                fig = go.Figure()
-                st.info("Using levels view (intraday data unavailable)")
-
         except Exception as e:
-            st.info(f"Using levels view: {str(e)}")
-            fig = go.Figure()
+            st.info(f"Using levels-only view: {str(e)}")
 
-        # Collect all levels for zone calculations
-        vanna_r1 = pred.get('vanna_resistance_1')
-        vanna_r2 = pred.get('vanna_resistance_2')
-        vanna_s1 = pred.get('vanna_support_1')
-        vanna_s2 = pred.get('vanna_support_2')
-        gex_support = pred.get('gex_support')
-        gex_resistance = pred.get('gex_resistance')
-        gex_flip = pred.get('gex_zero_level')
+        # Create multi-panel chart
+        try:
+            fig = create_options_flow_chart(pred, price_df, symbol)
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"Chart creation failed: {e}")
+            st.caption("Check console for detailed error information")
 
-        # Helper to check if level is within valid range of current price
-        def level_valid(level, pct=0.05):
-            return level and abs(level - current) / current <= pct
-
-        # Add RESISTANCE ZONE (red shaded area) - between Vanna R1 and GEX resistance
-        resistance_top = None
-        resistance_bottom = None
-        valid_r1 = level_valid(vanna_r1)
-        valid_gex_r = level_valid(gex_resistance)
-
-        if valid_r1 and valid_gex_r:
-            resistance_top = max(vanna_r1, gex_resistance)
-            resistance_bottom = min(vanna_r1, gex_resistance)
-        elif valid_r1:
-            resistance_top = vanna_r1 * 1.003
-            resistance_bottom = vanna_r1
-        elif valid_gex_r:
-            resistance_top = gex_resistance * 1.003
-            resistance_bottom = gex_resistance
-
-        if resistance_top and resistance_bottom and resistance_top > current:
-            fig.add_hrect(
-                y0=resistance_bottom, y1=resistance_top,
-                fillcolor="rgba(255, 82, 82, 0.25)",
-                line_width=0
-            )
-            # Add label annotation separately for better positioning
-            fig.add_annotation(
-                x=0.5, y=(resistance_top + resistance_bottom) / 2,
-                xref="paper", yref="y",
-                text="<b>REJECTION ZONE</b><br>Strong Resistance",
-                showarrow=False,
-                font=dict(size=11, color="white"),
-                bgcolor="rgba(213, 0, 0, 0.9)",
-                bordercolor="white",
-                borderwidth=2,
-                xanchor="center",
-                yanchor="middle"
-            )
-
-        # Add SUPPORT ZONE (green shaded area) - between Vanna S1 and GEX support
-        support_top = None
-        support_bottom = None
-        valid_s1 = level_valid(vanna_s1)
-        valid_gex_s = level_valid(gex_support)
-
-        if valid_s1 and valid_gex_s:
-            support_top = max(vanna_s1, gex_support)
-            support_bottom = min(vanna_s1, gex_support)
-        elif valid_s1:
-            support_top = vanna_s1
-            support_bottom = vanna_s1 * 0.997
-        elif valid_gex_s:
-            support_top = gex_support
-            support_bottom = gex_support * 0.997
-
-        if support_top and support_bottom and support_bottom < current:
-            fig.add_hrect(
-                y0=support_bottom, y1=support_top,
-                fillcolor="rgba(0, 230, 118, 0.25)",
-                line_width=0
-            )
-            # Add label annotation separately for better positioning
-            fig.add_annotation(
-                x=0.5, y=(support_top + support_bottom) / 2,
-                xref="paper", yref="y",
-                text="<b>BOUNCE ZONE</b><br>Strong Support",
-                showarrow=False,
-                font=dict(size=11, color="white"),
-                bgcolor="rgba(0, 200, 83, 0.9)",
-                bordercolor="white",
-                borderwidth=2,
-                xanchor="center",
-                yanchor="middle"
-            )
-
-        # Entry price (current) - Bold blue line like in reference
-        fig.add_hline(
-            y=current,
-            line_dash="solid",
-            line_color="#2196F3",
-            line_width=3,
-            annotation_text=f"<b>CURRENT: ${current:.2f}</b>",
-            annotation_position="left",
-            annotation=dict(
-                font=dict(size=12, color="white"),
-                bgcolor="#2196F3",
-                bordercolor="white",
-                borderwidth=1
-            )
-        )
-
-        # Profit Target - only if valid
-        # Commented out for better chart scaling
-        # if pred_high and level_valid(pred_high):
-        #     upside_pct = ((pred_high - current) / current * 100)
-        #     fig.add_hline(
-        #         y=pred_high,
-        #         line_dash="dot",
-        #         line_color="#00E676",
-        #         line_width=2,
-        #         annotation_text=f"<b>TARGET: ${pred_high:.2f}</b> (+{upside_pct:.1f}%)",
-        #         annotation_position="right",
-        #         annotation=dict(
-        #             font=dict(size=10, color="white"),
-        #             bgcolor="#00C853",
-        #             borderwidth=1
-        #         )
-        #     )
-
-        # Stop Loss - only if valid
-        # Commented out for better chart scaling
-        # if pred_low and level_valid(pred_low):
-        #     downside_pct = ((current - pred_low) / current * 100)
-        #     fig.add_hline(
-        #         y=pred_low,
-        #         line_dash="dot",
-        #         line_color="#FF5252",
-        #         line_width=2,
-        #         annotation_text=f"<b>STOP: ${pred_low:.2f}</b> (-{downside_pct:.1f}%)",
-        #         annotation_position="right",
-        #         annotation=dict(
-        #             font=dict(size=10, color="white"),
-        #             bgcolor="#D50000",
-        #             borderwidth=1
-        #         )
-        #     )
-
-        # Add Vanna resistance levels (if available and valid) - Negative Vanna = Repellent
-        if vanna_r1 and level_valid(vanna_r1):
-            strength = pred.get('vanna_resistance_1_strength')
-            strength_text = f" ({abs(strength):.1f})" if strength else ""
-            fig.add_hline(
-                y=vanna_r1,
-                line_dash="dash",
-                line_color="#FF9800",
-                line_width=2,
-                annotation_text=f"<b>VANNA R1: ${vanna_r1:.2f}</b>{strength_text}",
-                annotation_position="left",
-                annotation=dict(
-                    font=dict(size=9, color="white"),
-                    bgcolor="#FF6D00",
-                    borderwidth=1
-                )
-            )
-
-        if vanna_r2 and level_valid(vanna_r2):
-            strength = pred.get('vanna_resistance_2_strength')
-            strength_text = f" ({abs(strength):.1f})" if strength else ""
-            fig.add_hline(
-                y=vanna_r2,
-                line_dash="dash",
-                line_color="#FFB74D",
-                line_width=1,
-                annotation_text=f"<b>VANNA R2: ${vanna_r2:.2f}</b>{strength_text}",
-                annotation_position="left",
-                annotation=dict(
-                    font=dict(size=8, color="black"),
-                    bgcolor="#FFB74D",
-                    borderwidth=1
-                )
-            )
-
-        # Add Vanna support levels (if available and valid) - Positive Vanna = Attractor
-        if vanna_s1 and level_valid(vanna_s1):
-            strength = pred.get('vanna_support_1_strength')
-            strength_text = f" ({abs(strength):.1f})" if strength else ""
-            fig.add_hline(
-                y=vanna_s1,
-                line_dash="dash",
-                line_color="#9C27B0",
-                line_width=2,
-                annotation_text=f"<b>VANNA S1: ${vanna_s1:.2f}</b>{strength_text}",
-                annotation_position="left",
-                annotation=dict(
-                    font=dict(size=9, color="white"),
-                    bgcolor="#7B1FA2",
-                    borderwidth=1
-                )
-            )
-
-        if vanna_s2 and level_valid(vanna_s2):
-            strength = pred.get('vanna_support_2_strength')
-            strength_text = f" ({abs(strength):.1f})" if strength else ""
-            fig.add_hline(
-                y=vanna_s2,
-                line_dash="dash",
-                line_color="#CE93D8",
-                line_width=1,
-                annotation_text=f"<b>VANNA S2: ${vanna_s2:.2f}</b>{strength_text}",
-                annotation_position="left",
-                annotation=dict(
-                    font=dict(size=8, color="black"),
-                    bgcolor="#CE93D8",
-                    borderwidth=1
-                )
-            )
-
-        # Add GEX (Gamma Exposure) hedge levels - only if within valid range
-        if gex_flip and level_valid(gex_flip):
-            fig.add_hline(
-                y=gex_flip,
-                line_dash="dashdot",
-                line_color="#00BCD4",
-                line_width=3,
-                annotation_text=f"<b>GEX FLIP: ${gex_flip:.2f}</b>",
-                annotation_position="right",
-                annotation=dict(
-                    font=dict(size=10, color="white"),
-                    bgcolor="#00838F",
-                    borderwidth=1
-                )
-            )
-
-        if gex_support and level_valid(gex_support):
-            fig.add_hline(
-                y=gex_support,
-                line_dash="dot",
-                line_color="#76FF03",
-                line_width=2,
-                annotation_text=f"<b>GEX SUPPORT: ${gex_support:.0f}</b><br>Dealers BUY",
-                annotation_position="right",
-                annotation=dict(
-                    font=dict(size=9, color="white"),
-                    bgcolor="#33691E",
-                    borderwidth=1
-                )
-            )
-
-        if gex_resistance and level_valid(gex_resistance):
-            fig.add_hline(
-                y=gex_resistance,
-                line_dash="dot",
-                line_color="#E040FB",
-                line_width=2,
-                annotation_text=f"<b>GEX RESISTANCE: ${gex_resistance:.0f}</b><br>Dealers SELL",
-                annotation_position="right",
-                annotation=dict(
-                    font=dict(size=9, color="white"),
-                    bgcolor="#6A1B9A",
-                    borderwidth=1
-                )
-            )
-
-        # Fill area between profit target and stop loss - only if both valid
-        # Commented out for better chart scaling
-        # if pred_high and pred_low and level_valid(pred_high) and level_valid(pred_low):
-        #     fig.add_hrect(
-        #         y0=pred_low, y1=pred_high,
-        #         fillcolor="green", opacity=0.1,
-        #         line_width=0
-        #     )
-
-        # Calculate y-axis range centered on current price and all levels
-        # Only include levels within 5% of current price to avoid scaling issues
-        def is_valid_level(level, current_price, tolerance=0.05):
-            if level is None:
-                return False
-            return abs(level - current_price) / current_price <= tolerance
-
-        all_levels = [current]
-        # Removed pred_high and pred_low for better chart scaling
-        # if pred_high and is_valid_level(pred_high, current):
-        #     all_levels.append(pred_high)
-        # if pred_low and is_valid_level(pred_low, current):
-        #     all_levels.append(pred_low)
-        if vanna_r1 and is_valid_level(vanna_r1, current):
-            all_levels.append(vanna_r1)
-        if vanna_r2 and is_valid_level(vanna_r2, current):
-            all_levels.append(vanna_r2)
-        if vanna_s1 and is_valid_level(vanna_s1, current):
-            all_levels.append(vanna_s1)
-        if vanna_s2 and is_valid_level(vanna_s2, current):
-            all_levels.append(vanna_s2)
-        # Add GEX levels only if within reasonable range
-        if gex_support and is_valid_level(gex_support, current):
-            all_levels.append(gex_support)
-        if gex_resistance and is_valid_level(gex_resistance, current):
-            all_levels.append(gex_resistance)
-        if gex_flip and is_valid_level(gex_flip, current):
-            all_levels.append(gex_flip)
-
-        # Set y-axis range with good padding for visibility
-        y_min = min(all_levels) * 0.995  # 0.5% below lowest level
-        y_max = max(all_levels) * 1.005  # 0.5% above highest level
-
-        # Ensure minimum range of 2% for visibility
-        price_range = y_max - y_min
-        min_range = current * 0.02
-        if price_range < min_range:
-            center = (y_max + y_min) / 2
-            y_min = center - min_range / 2
-            y_max = center + min_range / 2
-
-        # Add GEX regime annotation box (like in reference image)
-        if gex_flip:
-            regime_text = "Below GEX Flip = Momentum Mode<br>Above GEX Flip = Mean Reversion"
-            fig.add_annotation(
-                x=1.0,
-                y=gex_flip,
-                xref="paper",
-                yref="y",
-                text=regime_text,
-                showarrow=False,
-                font=dict(size=9, color="black"),
-                bgcolor="rgba(255, 255, 200, 0.9)",
-                bordercolor="orange",
-                borderwidth=1,
-                xanchor="right"
-            )
-
-        fig.update_layout(
-            title=dict(
-                text=f"<b>COMBINED HEDGE LEVELS - {symbol} Trading Setup</b>",
-                font=dict(size=16, color="white"),
-                x=0.5,
-                xanchor="center"
-            ),
-            yaxis_title="Price ($)",
-            xaxis_title="Time",
-            yaxis=dict(
-                range=[y_min, y_max],
-                gridcolor='rgba(128, 128, 128, 0.3)',
-                gridwidth=1,
-                tickformat='$.2f'
-            ),
-            xaxis=dict(
-                gridcolor='rgba(128, 128, 128, 0.3)',
-                gridwidth=1
-            ),
-            height=550,
-            showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="left",
-                x=0,
-                font=dict(size=9)
-            ),
-            hovermode='x unified',
-            template='plotly_dark',
-            plot_bgcolor='rgba(0, 0, 0, 0)',
-            paper_bgcolor='rgba(30, 30, 30, 1)',
-            margin=dict(l=50, r=120, t=80, b=50),
-            autosize=True
-        )
-
-        # Update xaxis to show rangeslider for navigation
-        fig.update_xaxes(rangeslider_visible=False)
-
-        st.plotly_chart(fig, use_container_width=True)
-
-        # Improved chart legend with clear descriptions
+        # Chart legend with clear descriptions
         st.markdown("""
-        **Chart Legend:**
-        - 🔵 **Entry** (Current Price)
-        - 🟠 **Vanna R** (Resistance - Dealers SELL) | 🟣 **Vanna S** (Support - Dealers BUY)
-        - ⚡ **GEX Flip** (Regime Change) | 💚 **GEX Support** | 💜 **GEX Resistance**
-        - 🟢 **BOUNCE ZONE** (Strong Support) | 🔴 **REJECTION ZONE** (Strong Resistance)
+        **📖 Chart Guide:**
+
+        **Panel 1 - Price Levels:**
+        - 🔵 **CURRENT** = Entry price
+        - 🌊 **GAMMA FLIP** = Major pivot (mean reversion above, momentum below)
+        - 🟢 **GEX SUPPORT/RESISTANCE** = S/R zones where dealers hedge
+        - 🟣 **VANNA WALLS** = Pressure zones from IV exposure
+        - 🎯 **PUT/CALL WALLS** = OI magnets and barriers
+        - 🟡 **VWAP** = Dynamic balance line
+        - **Background Color**: Green = Positive GEX (fade extremes), Red = Negative GEX (follow trends)
+
+        **Panel 2 - IV & Vanna:**
+        - **IV**: Implied volatility level and percentile
+        - **Net Vanna**: Dealer bias from IV exposure (positive = support, negative = resistance)
+        - **Vanna×IV**: Trend strength from options flow
+
+        **Panel 3 - Dealer Flow:**
+        - **Charm Pressure**: Time decay hedging flows
+        - **GEX Pressure**: Reaction strength indicator
+        - **Dealer Flow Score**: Combined flow metric (-100 to +100)
         """)
 
         # GEX Regime indicator
