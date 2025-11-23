@@ -11,12 +11,21 @@ import os
 from dotenv import load_dotenv
 import pytz
 import time
+import base64
 
 # Load environment variables
 load_dotenv()
 
 # Set timezone to EST
 EST = pytz.timezone('US/Eastern')
+
+def create_download_link(file_path, link_text):
+    """Create an HTML link that opens a file in a new browser tab"""
+    with open(file_path, 'rb') as f:
+        data = f.read()
+    b64 = base64.b64encode(data).decode()
+    href = f'<a href="data:text/html;base64,{b64}" target="_blank" style="display: inline-block; padding: 0.5em 1em; background-color: #0066cc; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">{link_text}</a>'
+    return href
 
 # Helper function for VWAP calculation
 def calculate_vwap(price_df):
@@ -711,15 +720,9 @@ with st.sidebar:
             - Stop: Below GEX Support
             """)
             if os.path.exists("bullish_setup_example.html"):
-                with open("bullish_setup_example.html", "rb") as f:
-                    st.download_button(
-                        label="📊 Open Bullish Setup Chart (Full Size)",
-                        data=f,
-                        file_name="bullish_setup_example.html",
-                        mime="text/html",
-                        use_container_width=True
-                    )
-                st.caption("⬆️ Click to download and open the interactive chart in your browser")
+                link = create_download_link("bullish_setup_example.html", "📊 Open Bullish Setup Chart in New Tab")
+                st.markdown(link, unsafe_allow_html=True)
+                st.caption("⬆️ Click to open the interactive chart in a new browser tab")
 
         with tab2:
             st.markdown("""
@@ -735,15 +738,9 @@ with st.sidebar:
             - Stop: Above GEX Resistance
             """)
             if os.path.exists("bearish_setup_example.html"):
-                with open("bearish_setup_example.html", "rb") as f:
-                    st.download_button(
-                        label="📊 Open Bearish Setup Chart (Full Size)",
-                        data=f,
-                        file_name="bearish_setup_example.html",
-                        mime="text/html",
-                        use_container_width=True
-                    )
-                st.caption("⬆️ Click to download and open the interactive chart in your browser")
+                link = create_download_link("bearish_setup_example.html", "📊 Open Bearish Setup Chart in New Tab")
+                st.markdown(link, unsafe_allow_html=True)
+                st.caption("⬆️ Click to open the interactive chart in a new browser tab")
 
         with tab3:
             st.markdown("""
@@ -759,15 +756,9 @@ with st.sidebar:
             - Avoid breakout trades until Dealer Flow shifts decisively
             """)
             if os.path.exists("range-bound_setup_example.html"):
-                with open("range-bound_setup_example.html", "rb") as f:
-                    st.download_button(
-                        label="📊 Open Range-Bound Setup Chart (Full Size)",
-                        data=f,
-                        file_name="range-bound_setup_example.html",
-                        mime="text/html",
-                        use_container_width=True
-                    )
-                st.caption("⬆️ Click to download and open the interactive chart in your browser")
+                link = create_download_link("range-bound_setup_example.html", "📊 Open Range-Bound Setup Chart in New Tab")
+                st.markdown(link, unsafe_allow_html=True)
+                st.caption("⬆️ Click to open the interactive chart in a new browser tab")
 
         st.divider()
         st.caption("""
