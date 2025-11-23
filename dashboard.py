@@ -193,8 +193,15 @@ with st.sidebar:
         optimal_start = now.replace(hour=10, minute=0, second=0, microsecond=0)
         optimal_end = now.replace(hour=15, minute=0, second=0, microsecond=0)
 
+        # NY Morning Priority Session (10:00 AM - 12:00 PM EST)
+        priority_start = now.replace(hour=10, minute=0, second=0, microsecond=0)
+        priority_end = now.replace(hour=12, minute=0, second=0, microsecond=0)
+
         # Display current EST time
         st.caption(f"🕐 {now.strftime('%I:%M %p EST')}")
+
+        # Check if in NY morning priority session
+        in_priority_session = priority_start <= now <= priority_end and now.weekday() < 5
 
         if now < market_open:
             st.warning(f"⏸️ Pre-market ({(market_open - now).seconds // 60} min to open)")
@@ -204,8 +211,53 @@ with st.sidebar:
             st.warning("⚠️ Avoid zone (first 30 min)")
         elif now > optimal_end:
             st.warning("⚠️ Closing time (last hour)")
+        elif in_priority_session:
+            st.success("🌟 **NY MORNING PRIORITY** 🌟")
+            st.caption("Prime liquidity window (10AM-12PM)")
         else:
             st.success("✅ Optimal trading hours")
+
+        # NY Morning Priority Session Info Box
+        st.markdown("---")
+        st.markdown("### 🌟 Priority Session")
+
+        if in_priority_session:
+            # Show countdown to end of priority session
+            time_remaining = (priority_end - now).seconds
+            mins_remaining = time_remaining // 60
+            st.info(f"""
+            **ACTIVE NOW**
+
+            ⏱️ {mins_remaining} minutes remaining
+
+            📈 Highest liquidity & volatility
+            🎯 Best setups typically occur now
+            ⚡ Focus on quality entries
+            """)
+        elif now < priority_start and now >= market_open:
+            # Show countdown to start of priority session
+            time_until = (priority_start - now).seconds
+            mins_until = time_until // 60
+            st.warning(f"""
+            **Starts in {mins_until} min**
+
+            ⏰ Priority session: 10AM-12PM EST
+            🔔 Get ready for prime trading time
+            """)
+        elif now > priority_end and now < market_close:
+            st.caption("""
+            **Priority Session Ended**
+
+            Next session: Tomorrow 10AM-12PM EST
+            """)
+        else:
+            st.caption("""
+            **NY Morning Priority Session**
+
+            ⏰ Daily: 10:00 AM - 12:00 PM EST
+            📊 Prime trading window
+            💎 Best liquidity & setups
+            """)
     else:
         interval = 'daily'
 
@@ -250,6 +302,7 @@ with st.sidebar:
         - Intraday support/resistance
         - Vanna levels (0DTE options)
         - Market hours monitoring
+        - **🌟 NY Morning Priority (10AM-12PM)**
         - Optimal trading windows
         - Same-day profit targets
         """)
@@ -1417,6 +1470,7 @@ if 'predictions' not in st.session_state:
             **Market Hours Monitoring**
             - Pre-market alerts
             - Avoid first 30min (9:30-10:00)
+            - **🌟 Priority: 10AM-12PM EST**
             - Optimal window (10am-3pm)
             - Closing time warnings
             """)
