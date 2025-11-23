@@ -709,7 +709,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📖 Trading Guidebook")
 
-    with st.expander("🎯 How to Trade (Decision Guide)", expanded=False):
+    with st.expander("🎯 How to Trade (Decision Guide)", expanded=True):
         if os.path.exists("trading_decision_guide.png"):
             st.image("trading_decision_guide.png", use_container_width=True)
         st.caption("""
