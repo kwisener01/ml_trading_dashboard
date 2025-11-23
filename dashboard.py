@@ -692,14 +692,70 @@ with st.sidebar:
         """)
 
     with st.expander("📋 Trading Playbook", expanded=False):
-        if os.path.exists("trading_playbook_diagram.png"):
-            st.image("trading_playbook_diagram.png", use_column_width=True)
+        st.markdown("### How to Use the 3-Panel Chart")
+
+        # Create tabs for different scenarios
+        tab1, tab2, tab3 = st.tabs(["🟢 Bullish Setup", "🔴 Bearish Setup", "⚪ Range-Bound"])
+
+        with tab1:
+            st.markdown("""
+            **🟢 BULLISH SETUP:**
+            - ✅ Price **above** Gamma Flip (positive GEX regime = green background)
+            - ✅ Vanna support below provides bounce levels
+            - ✅ Rising Vanna×IV trend (Panel 2)
+            - ✅ Positive Dealer Flow Score (Panel 3)
+
+            **Trading Strategy:**
+            - Look for dips to Vanna Support or VWAP for LONG entries
+            - Target: Call Wall above
+            - Stop: Below GEX Support
+            """)
+            if os.path.exists("bullish_setup_example.html"):
+                with open("bullish_setup_example.html", "r") as f:
+                    st.components.v1.html(f.read(), height=900, scrolling=True)
+
+        with tab2:
+            st.markdown("""
+            **🔴 BEARISH SETUP:**
+            - ✅ Price **below** Gamma Flip (negative GEX regime = red background)
+            - ✅ Vanna resistance above acts as ceiling
+            - ✅ Rising IV with falling Vanna×IV (Panel 2)
+            - ✅ Negative Dealer Flow Score (Panel 3)
+
+            **Trading Strategy:**
+            - Look for rallies to Vanna Resistance or VWAP for SHORT entries
+            - Target: Put Wall below
+            - Stop: Above GEX Resistance
+            """)
+            if os.path.exists("bearish_setup_example.html"):
+                with open("bearish_setup_example.html", "r") as f:
+                    st.components.v1.html(f.read(), height=900, scrolling=True)
+
+        with tab3:
+            st.markdown("""
+            **⚪ RANGE-BOUND SETUP:**
+            - ✅ Price **at** Gamma Flip with tight GEX walls
+            - ✅ Put Wall below & Call Wall above define range
+            - ✅ Stable IV and Vanna indicators (Panel 2)
+            - ✅ Near-neutral Dealer Flow (Panel 3)
+
+            **Trading Strategy:**
+            - BUY at GEX Support / Put Wall
+            - SELL at GEX Resistance / Call Wall
+            - Avoid breakout trades until Dealer Flow shifts decisively
+            """)
+            if os.path.exists("range-bound_setup_example.html"):
+                with open("range-bound_setup_example.html", "r") as f:
+                    st.components.v1.html(f.read(), height=900, scrolling=True)
+
+        st.divider()
         st.caption("""
-        **Quick Actions:**
-        - At GEX Support → LONG
-        - At GEX Resistance → SHORT/WAIT
-        - Above GEX Flip → FADE rallies
-        - Below GEX Flip → FOLLOW trend
+        **Quick Reference:**
+        - **Gamma Flip** (cyan solid) = Major pivot point where dealer hedging changes
+        - **GEX Walls** (green/red dash) = Support/Resistance zones from gamma exposure
+        - **Vanna Walls** (green/red dot) = Pressure zones from vanna exposure
+        - **Put/Call Walls** (purple/orange) = Price magnets from open interest
+        - **VWAP** (yellow) = Dynamic balance point for the session
         """)
 
 # Main content
