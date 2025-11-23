@@ -749,38 +749,40 @@ if 'predictions' in st.session_state:
         )
 
         # Profit Target - only if valid
-        if pred_high and level_valid(pred_high):
-            upside_pct = ((pred_high - current) / current * 100)
-            fig.add_hline(
-                y=pred_high,
-                line_dash="dot",
-                line_color="#00E676",
-                line_width=2,
-                annotation_text=f"<b>TARGET: ${pred_high:.2f}</b> (+{upside_pct:.1f}%)",
-                annotation_position="right",
-                annotation=dict(
-                    font=dict(size=10, color="white"),
-                    bgcolor="#00C853",
-                    borderwidth=1
-                )
-            )
+        # Commented out for better chart scaling
+        # if pred_high and level_valid(pred_high):
+        #     upside_pct = ((pred_high - current) / current * 100)
+        #     fig.add_hline(
+        #         y=pred_high,
+        #         line_dash="dot",
+        #         line_color="#00E676",
+        #         line_width=2,
+        #         annotation_text=f"<b>TARGET: ${pred_high:.2f}</b> (+{upside_pct:.1f}%)",
+        #         annotation_position="right",
+        #         annotation=dict(
+        #             font=dict(size=10, color="white"),
+        #             bgcolor="#00C853",
+        #             borderwidth=1
+        #         )
+        #     )
 
         # Stop Loss - only if valid
-        if pred_low and level_valid(pred_low):
-            downside_pct = ((current - pred_low) / current * 100)
-            fig.add_hline(
-                y=pred_low,
-                line_dash="dot",
-                line_color="#FF5252",
-                line_width=2,
-                annotation_text=f"<b>STOP: ${pred_low:.2f}</b> (-{downside_pct:.1f}%)",
-                annotation_position="right",
-                annotation=dict(
-                    font=dict(size=10, color="white"),
-                    bgcolor="#D50000",
-                    borderwidth=1
-                )
-            )
+        # Commented out for better chart scaling
+        # if pred_low and level_valid(pred_low):
+        #     downside_pct = ((current - pred_low) / current * 100)
+        #     fig.add_hline(
+        #         y=pred_low,
+        #         line_dash="dot",
+        #         line_color="#FF5252",
+        #         line_width=2,
+        #         annotation_text=f"<b>STOP: ${pred_low:.2f}</b> (-{downside_pct:.1f}%)",
+        #         annotation_position="right",
+        #         annotation=dict(
+        #             font=dict(size=10, color="white"),
+        #             bgcolor="#D50000",
+        #             borderwidth=1
+        #         )
+        #     )
 
         # Add Vanna resistance levels (if available and valid) - Negative Vanna = Repellent
         if vanna_r1 and level_valid(vanna_r1):
@@ -899,12 +901,13 @@ if 'predictions' in st.session_state:
             )
 
         # Fill area between profit target and stop loss - only if both valid
-        if pred_high and pred_low and level_valid(pred_high) and level_valid(pred_low):
-            fig.add_hrect(
-                y0=pred_low, y1=pred_high,
-                fillcolor="green", opacity=0.1,
-                line_width=0
-            )
+        # Commented out for better chart scaling
+        # if pred_high and pred_low and level_valid(pred_high) and level_valid(pred_low):
+        #     fig.add_hrect(
+        #         y0=pred_low, y1=pred_high,
+        #         fillcolor="green", opacity=0.1,
+        #         line_width=0
+        #     )
 
         # Calculate y-axis range centered on current price and all levels
         # Only include levels within 5% of current price to avoid scaling issues
@@ -914,10 +917,11 @@ if 'predictions' in st.session_state:
             return abs(level - current_price) / current_price <= tolerance
 
         all_levels = [current]
-        if pred_high and is_valid_level(pred_high, current):
-            all_levels.append(pred_high)
-        if pred_low and is_valid_level(pred_low, current):
-            all_levels.append(pred_low)
+        # Removed pred_high and pred_low for better chart scaling
+        # if pred_high and is_valid_level(pred_high, current):
+        #     all_levels.append(pred_high)
+        # if pred_low and is_valid_level(pred_low, current):
+        #     all_levels.append(pred_low)
         if vanna_r1 and is_valid_level(vanna_r1, current):
             all_levels.append(vanna_r1)
         if vanna_r2 and is_valid_level(vanna_r2, current):
@@ -1008,7 +1012,7 @@ if 'predictions' in st.session_state:
         # Improved chart legend with clear descriptions
         st.markdown("""
         **Chart Legend:**
-        - 🔵 **Entry** (Current Price) | 🎯 **Target** (Predicted High) | 🛑 **Stop** (Predicted Low)
+        - 🔵 **Entry** (Current Price)
         - 🟠 **Vanna R** (Resistance - Dealers SELL) | 🟣 **Vanna S** (Support - Dealers BUY)
         - ⚡ **GEX Flip** (Regime Change) | 💚 **GEX Support** | 💜 **GEX Resistance**
         - 🟢 **BOUNCE ZONE** (Strong Support) | 🔴 **REJECTION ZONE** (Strong Resistance)
