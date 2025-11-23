@@ -40,12 +40,15 @@ def calculate_vwap(price_df):
         return None
 
 # Multi-panel chart builder
-def create_options_flow_chart(pred, price_df, symbol):
+def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
     """
     Create 3-panel chart with:
     - Panel 1: Price with options flow levels
     - Panel 2: IV & Vanna indicators
     - Panel 3: Dealer flow indicators
+
+    Args:
+        in_charm_session: If True, highlights charm in Panel 3 (end-of-day 3-4PM)
     """
     # Create subplot with 3 rows
     fig = make_subplots(
@@ -309,13 +312,29 @@ def create_options_flow_chart(pred, price_df, symbol):
     # Charm (time decay flows)
     charm = pred.get('charm', 0)
     charm_pressure = pred.get('charm_pressure', 0)
+    charm_color = '#FFD700' if in_charm_session else '#A8E6CF'  # Gold during charm session
     fig.add_trace(go.Bar(
         x=panel_x_single,
         y=[charm_pressure],
-        name='Charm Pressure',
-        marker_color='#A8E6CF',
+        name='Charm Pressure' + (' ⚡' if in_charm_session else ''),
+        marker_color=charm_color,
         showlegend=True
     ), row=3, col=1)
+
+    # Add charm session indicator if active
+    if in_charm_session:
+        fig.add_annotation(
+            text="⚡ END-OF-DAY: High Charm Pressure ⚡",
+            xref="x3", yref="y3",
+            x=0.5, y=max(abs(charm_pressure), 50) * 1.1,
+            showarrow=False,
+            font=dict(size=10, color="gold", family="Arial Black"),
+            bgcolor="rgba(30, 30, 30, 0.8)",
+            bordercolor="gold",
+            borderwidth=1,
+            borderpad=4,
+            row=3, col=1
+        )
 
     # GEX Pressure (reaction strength)
     gex_pressure = 50 if gex_regime == 'positive' else -50 if gex_regime == 'negative' else 0
@@ -544,11 +563,16 @@ with st.sidebar:
         priority_start = now.replace(hour=10, minute=0, second=0, microsecond=0)
         priority_end = now.replace(hour=12, minute=0, second=0, microsecond=0)
 
+        # End-of-Day Charm Session (3:00 PM - 4:00 PM EST)
+        charm_start = now.replace(hour=15, minute=0, second=0, microsecond=0)
+        charm_end = now.replace(hour=16, minute=0, second=0, microsecond=0)
+
         # Display current EST time
         st.caption(f"🕐 {now.strftime('%I:%M %p EST')}")
 
-        # Check if in NY morning priority session
+        # Check if in special trading sessions
         in_priority_session = priority_start <= now <= priority_end and now.weekday() < 5
+        in_charm_session = charm_start <= now <= charm_end and now.weekday() < 5
 
         if now < market_open:
             st.warning(f"⏸️ Pre-market ({(market_open - now).seconds // 60} min to open)")
@@ -556,20 +580,35 @@ with st.sidebar:
             st.info("🔔 Market closed")
         elif now < optimal_start:
             st.warning("⚠️ Avoid zone (first 30 min)")
-        elif now > optimal_end:
-            st.warning("⚠️ Closing time (last hour)")
+        elif in_charm_session:
+            st.warning("⏰ **END-OF-DAY CHARM** ⏰")
+            st.caption("High charm pressure (3-4PM)")
         elif in_priority_session:
             st.success("🌟 **NY MORNING PRIORITY** 🌟")
             st.caption("Prime liquidity window (10AM-12PM)")
         else:
             st.success("✅ Optimal trading hours")
 
-        # NY Morning Priority Session Info Box
+        # Session Info Boxes
         st.markdown("---")
-        st.markdown("### 🌟 Priority Session")
 
-        if in_priority_session:
-            # Show countdown to end of priority session
+        # Priority session or Charm session - show whichever is active/relevant
+        if in_charm_session:
+            st.markdown("### ⏰ End-of-Day Charm")
+            time_remaining = (charm_end - now).seconds
+            mins_remaining = time_remaining // 60
+            st.warning(f"""
+            **ACTIVE NOW**
+
+            ⏱️ {mins_remaining} minutes to close
+
+            ⚡ High charm pressure (time decay)
+            📉 Dealers hedge delta decay
+            🎯 Watch for pin to strikes or breakouts
+            ⚠️ Elevated volatility possible
+            """)
+        elif in_priority_session:
+            st.markdown("### 🌟 NY Morning Priority")
             time_remaining = (priority_end - now).seconds
             mins_remaining = time_remaining // 60
             st.info(f"""
@@ -581,29 +620,34 @@ with st.sidebar:
             🎯 Best setups typically occur now
             ⚡ Focus on quality entries
             """)
-        elif now < priority_start and now >= market_open:
-            # Show countdown to start of priority session
+        elif now < priority_start and now >= market_open and not in_charm_session:
+            st.markdown("### 🌟 Next Session")
             time_until = (priority_start - now).seconds
             mins_until = time_until // 60
-            st.warning(f"""
-            **Starts in {mins_until} min**
+            st.caption(f"""
+            **Priority starts in {mins_until} min**
 
-            ⏰ Priority session: 10AM-12PM EST
-            🔔 Get ready for prime trading time
+            ⏰ 10AM-12PM EST - Prime trading time
             """)
-        elif now > priority_end and now < market_close:
-            st.caption("""
-            **Priority Session Ended**
+        elif now >= priority_end and now < charm_start:
+            st.markdown("### ⏰ Next Session")
+            time_until = (charm_start - now).seconds
+            mins_until = time_until // 60
+            st.caption(f"""
+            **Charm session in {mins_until} min**
 
-            Next session: Tomorrow 10AM-12PM EST
+            ⏰ 3PM-4PM EST - End-of-day hedging
             """)
         else:
+            st.markdown("### 📅 Trading Sessions")
             st.caption("""
-            **NY Morning Priority Session**
+            **🌟 NY Morning Priority**
+            10:00 AM - 12:00 PM EST
+            Prime liquidity & setups
 
-            ⏰ Daily: 10:00 AM - 12:00 PM EST
-            📊 Prime trading window
-            💎 Best liquidity & setups
+            **⏰ End-of-Day Charm**
+            3:00 PM - 4:00 PM EST
+            Time decay hedging flows
             """)
     else:
         interval = 'daily'
@@ -1004,6 +1048,11 @@ if 'predictions' in st.session_state:
         market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
         is_market_hours = market_open <= now <= market_close and now.weekday() < 5
 
+        # Check if in end-of-day charm session (3-4 PM EST)
+        charm_start = now.replace(hour=15, minute=0, second=0, microsecond=0)
+        charm_end = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        in_charm_session = charm_start <= now <= charm_end and now.weekday() < 5
+
         if not is_market_hours:
             st.info("📊 **Market Closed** - Showing key levels only. Candlesticks will appear during market hours (9:30 AM - 4:00 PM EST, Mon-Fri)")
 
@@ -1034,7 +1083,7 @@ if 'predictions' in st.session_state:
 
         # Create multi-panel chart
         try:
-            fig = create_options_flow_chart(pred, price_df, symbol)
+            fig = create_options_flow_chart(pred, price_df, symbol, in_charm_session=in_charm_session)
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f"❌ Chart creation failed: {e}")
