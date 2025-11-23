@@ -389,6 +389,14 @@ if __name__ == "__main__":
         fig.write_html(filename)
         print(f"   ✅ Saved to: {filename}")
 
+        # Save as PNG (high resolution for readability)
+        png_filename = f"{scenario_name.lower().replace(' ', '_')}.png"
+        try:
+            fig.write_image(png_filename, width=1400, height=1000, scale=2)
+            print(f"   ✅ Saved PNG to: {png_filename}")
+        except Exception as e:
+            print(f"   ⚠️  Could not save PNG (install kaleido: pip install kaleido): {e}")
+
         # Also show in browser (optional - comment out if not needed)
         # fig.show()
 
