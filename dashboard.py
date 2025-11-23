@@ -787,21 +787,20 @@ if 'predictions' in st.session_state:
                 st.metric("Win Probability", f"{profit_prob:.1f}%")
     
         with col2:
-            upside = pred.get('upside_target')
-            if upside is not None:
-                st.metric("Upside Target", f"+{upside:.2f}%", 
-                         delta=f"${pred['predicted_high']:.2f}")
-    
+            # IV Percentile
+            iv_pct = pred.get('iv_percentile', 50)
+            st.metric("IV Percentile", f"{iv_pct:.0f}%")
+
         with col3:
-            downside = pred.get('downside_risk')
-            if downside is not None:
-                st.metric("Downside Risk", f"-{downside:.2f}%", 
-                         delta=f"${pred['predicted_low']:.2f}", delta_color="inverse")
-    
+            # Vanna x IV Trend
+            vanna_iv = pred.get('vanna_iv_trend', 0)
+            st.metric("Vanna×IV Trend", f"{vanna_iv:.1f}")
+
         with col4:
-            if pred.get('upside_target') and pred.get('downside_risk'):
-                rr_ratio = pred['upside_target'] / pred['downside_risk']
-                st.metric("Risk/Reward", f"{rr_ratio:.2f}:1")
+            # Dealer Flow Score
+            dealer_score = pred.get('dealer_flow_score', 0)
+            score_status = "Bullish" if dealer_score > 20 else "Bearish" if dealer_score < -20 else "Neutral"
+            st.metric("Dealer Flow", score_status, f"{dealer_score:.0f}")
 
         # Net Hedge Pressure Indicator
         st.markdown("---")
@@ -976,8 +975,10 @@ if 'predictions' in st.session_state:
             fig = create_options_flow_chart(pred, price_df, symbol)
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
-            st.error(f"Chart creation failed: {e}")
-            st.caption("Check console for detailed error information")
+            st.error(f"❌ Chart creation failed: {e}")
+            import traceback
+            st.code(traceback.format_exc())
+            st.caption("⚠️ If this persists, try refreshing the page or restarting the app")
 
         # Chart legend with clear descriptions
         st.markdown("""
