@@ -719,10 +719,8 @@ with st.sidebar:
             - Target: Call Wall above
             - Stop: Below GEX Support
             """)
-            if os.path.exists("bullish_setup_example.html"):
-                link = create_download_link("bullish_setup_example.html", "📊 Open Bullish Setup Chart in New Tab")
-                st.markdown(link, unsafe_allow_html=True)
-                st.caption("⬆️ Click to open the interactive chart in a new browser tab")
+            if os.path.exists("bullish_setup_simple.png"):
+                st.image("bullish_setup_simple.png", use_container_width=True)
 
         with tab2:
             st.markdown("""
@@ -737,10 +735,8 @@ with st.sidebar:
             - Target: Put Wall below
             - Stop: Above GEX Resistance
             """)
-            if os.path.exists("bearish_setup_example.html"):
-                link = create_download_link("bearish_setup_example.html", "📊 Open Bearish Setup Chart in New Tab")
-                st.markdown(link, unsafe_allow_html=True)
-                st.caption("⬆️ Click to open the interactive chart in a new browser tab")
+            if os.path.exists("bearish_setup_simple.png"):
+                st.image("bearish_setup_simple.png", use_container_width=True)
 
         with tab3:
             st.markdown("""
@@ -755,10 +751,8 @@ with st.sidebar:
             - SELL at GEX Resistance / Call Wall
             - Avoid breakout trades until Dealer Flow shifts decisively
             """)
-            if os.path.exists("range-bound_setup_example.html"):
-                link = create_download_link("range-bound_setup_example.html", "📊 Open Range-Bound Setup Chart in New Tab")
-                st.markdown(link, unsafe_allow_html=True)
-                st.caption("⬆️ Click to open the interactive chart in a new browser tab")
+            if os.path.exists("range-bound_setup_simple.png"):
+                st.image("range-bound_setup_simple.png", use_container_width=True)
 
         st.divider()
         st.caption("""
