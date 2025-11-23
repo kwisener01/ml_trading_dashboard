@@ -149,6 +149,91 @@ class TradingPredictor:
         fe.add_vanna_levels()
 
         return fe.data
+
+    def calculate_options_flow_data(self, symbol, current_price, vix):
+        """
+        Calculate comprehensive options flow metrics:
+        - Charm (time decay flows)
+        - Put/Call walls
+        - IV metrics
+        - Combined dealer flow score
+        """
+        flow_data = {}
+
+        try:
+            from second_order_greeks import SecondOrderGreeks
+            import requests
+
+            greeks_calc = SecondOrderGreeks()
+
+            # Calculate ATM implied volatility (using VIX as proxy)
+            flow_data['iv'] = vix / 100  # Convert VIX to decimal
+            flow_data['iv_percentile'] = min(100, max(0, (vix - 10) / 30 * 100))  # Rough IV percentile
+
+            # Calculate Charm for ATM options (1-week and 1-month)
+            # Charm measures delta decay - important for understanding dealer hedging flows
+            try:
+                charm_1w = greeks_calc.charm(
+                    S=current_price,
+                    K=current_price,  # ATM
+                    T=7/365,  # 1 week
+                    r=0.05,
+                    sigma=flow_data['iv']
+                )
+                charm_1m = greeks_calc.charm(
+                    S=current_price,
+                    K=current_price,  # ATM
+                    T=30/365,  # 1 month
+                    r=0.05,
+                    sigma=flow_data['iv']
+                )
+                flow_data['charm'] = charm_1w
+                flow_data['charm_1m'] = charm_1m
+                flow_data['charm_pressure'] = abs(charm_1w) * 100  # Scale for visualization
+            except Exception as e:
+                print(f"[WARN] Charm calculation failed: {e}")
+                flow_data['charm'] = 0
+                flow_data['charm_1m'] = 0
+                flow_data['charm_pressure'] = 0
+
+            # Calculate Put/Call wall levels (largest OI strikes)
+            # These act as magnets/barriers
+            try:
+                # Try to get options chain data
+                response = self.collector.session.get(
+                    f'{self.collector.base_url}/markets/options/chains',
+                    params={'symbol': symbol, 'expiration': None},
+                    headers={'Authorization': f'Bearer {self.collector.api_token}',
+                            'Accept': 'application/json'}
+                )
+
+                if response.status_code == 200:
+                    options_data = response.json()
+                    # Process options chain to find max OI strikes
+                    # This would require more detailed implementation
+                    flow_data['put_wall'] = None  # Placeholder
+                    flow_data['call_wall'] = None  # Placeholder
+                else:
+                    flow_data['put_wall'] = None
+                    flow_data['call_wall'] = None
+            except Exception as e:
+                print(f"[WARN] Put/Call wall calculation unavailable: {e}")
+                flow_data['put_wall'] = None
+                flow_data['call_wall'] = None
+
+        except Exception as e:
+            print(f"[ERROR] Options flow calculation failed: {e}")
+            flow_data = {
+                'iv': vix / 100,
+                'iv_percentile': 50,
+                'charm': 0,
+                'charm_1m': 0,
+                'charm_pressure': 0,
+                'put_wall': None,
+                'call_wall': None
+            }
+
+        return flow_data
     
     def predict(self, symbol):
         """
@@ -293,6 +378,46 @@ class TradingPredictor:
             predictions['gex_zero_level'] = None
             predictions['gex_regime'] = None
             predictions['gex_current'] = None
+
+        # Options flow data (IV, Charm, Put/Call walls)
+        try:
+            vix = latest_full['vix'].iloc[0] if 'vix' in latest_full.columns else 20.0
+            flow_data = self.calculate_options_flow_data(symbol, current_price, vix)
+            predictions.update(flow_data)
+
+            # Calculate combined dealer flow score
+            # Score based on: GEX regime, Vanna strength, Charm pressure
+            dealer_score = 0
+            if predictions.get('gex_regime') == 'positive':
+                dealer_score += 30  # Dealers support mean reversion
+            elif predictions.get('gex_regime') == 'negative':
+                dealer_score -= 30  # Dealers amplify momentum
+
+            # Add vanna contribution
+            vanna_s1_str = predictions.get('vanna_support_1_strength', 0) or 0
+            vanna_r1_str = predictions.get('vanna_resistance_1_strength', 0) or 0
+            dealer_score += (vanna_s1_str - abs(vanna_r1_str)) * 50
+
+            # Add charm contribution (time decay flows)
+            charm = flow_data.get('charm', 0)
+            dealer_score += charm * 10
+
+            predictions['dealer_flow_score'] = max(-100, min(100, dealer_score))
+
+            # Calculate Vanna × IV for trend indication
+            avg_vanna = (abs(vanna_s1_str) + abs(vanna_r1_str)) / 2 if (vanna_s1_str or vanna_r1_str) else 0
+            predictions['vanna_iv_trend'] = avg_vanna * flow_data.get('iv', 0.2) * 100
+
+        except Exception as e:
+            print(f"[WARNING] Could not calculate options flow data: {e}")
+            predictions['iv'] = 0.2
+            predictions['iv_percentile'] = 50
+            predictions['charm'] = 0
+            predictions['charm_pressure'] = 0
+            predictions['put_wall'] = None
+            predictions['call_wall'] = None
+            predictions['dealer_flow_score'] = 0
+            predictions['vanna_iv_trend'] = 0
 
         return predictions
     
