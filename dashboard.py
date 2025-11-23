@@ -709,6 +709,18 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📖 Trading Guidebook")
 
+    with st.expander("🎯 How to Trade (Decision Guide)", expanded=False):
+        if os.path.exists("trading_decision_guide.png"):
+            st.image("trading_decision_guide.png", use_container_width=True)
+        st.caption("""
+        **Follow these 3 steps:**
+        1. Check background color (GEX regime)
+        2. Check price vs Gamma Flip
+        3. Check Dealer Flow score
+
+        **Then execute the matching setup!**
+        """)
+
     with st.expander("🎯 Combined Hedge Levels", expanded=False):
         st.image("Vanna_Gamma_Hedge.png", use_column_width=True)
         st.caption("""
