@@ -711,8 +711,15 @@ with st.sidebar:
             - Stop: Below GEX Support
             """)
             if os.path.exists("bullish_setup_example.html"):
-                with open("bullish_setup_example.html", "r") as f:
-                    st.components.v1.html(f.read(), height=900, scrolling=True)
+                with open("bullish_setup_example.html", "rb") as f:
+                    st.download_button(
+                        label="📊 Open Bullish Setup Chart (Full Size)",
+                        data=f,
+                        file_name="bullish_setup_example.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
+                st.caption("⬆️ Click to download and open the interactive chart in your browser")
 
         with tab2:
             st.markdown("""
@@ -728,8 +735,15 @@ with st.sidebar:
             - Stop: Above GEX Resistance
             """)
             if os.path.exists("bearish_setup_example.html"):
-                with open("bearish_setup_example.html", "r") as f:
-                    st.components.v1.html(f.read(), height=900, scrolling=True)
+                with open("bearish_setup_example.html", "rb") as f:
+                    st.download_button(
+                        label="📊 Open Bearish Setup Chart (Full Size)",
+                        data=f,
+                        file_name="bearish_setup_example.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
+                st.caption("⬆️ Click to download and open the interactive chart in your browser")
 
         with tab3:
             st.markdown("""
@@ -745,8 +759,15 @@ with st.sidebar:
             - Avoid breakout trades until Dealer Flow shifts decisively
             """)
             if os.path.exists("range-bound_setup_example.html"):
-                with open("range-bound_setup_example.html", "r") as f:
-                    st.components.v1.html(f.read(), height=900, scrolling=True)
+                with open("range-bound_setup_example.html", "rb") as f:
+                    st.download_button(
+                        label="📊 Open Range-Bound Setup Chart (Full Size)",
+                        data=f,
+                        file_name="range-bound_setup_example.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
+                st.caption("⬆️ Click to download and open the interactive chart in your browser")
 
         st.divider()
         st.caption("""
