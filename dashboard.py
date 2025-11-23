@@ -11,12 +11,21 @@ import os
 from dotenv import load_dotenv
 import pytz
 import time
+import base64
 
 # Load environment variables
 load_dotenv()
 
 # Set timezone to EST
 EST = pytz.timezone('US/Eastern')
+
+def create_download_link(file_path, link_text):
+    """Create an HTML link that opens a file in a new browser tab"""
+    with open(file_path, 'rb') as f:
+        data = f.read()
+    b64 = base64.b64encode(data).decode()
+    href = f'<a href="data:text/html;base64,{b64}" target="_blank" style="display: inline-block; padding: 0.5em 1em; background-color: #0066cc; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">{link_text}</a>'
+    return href
 
 # Helper function for VWAP calculation
 def calculate_vwap(price_df):
@@ -710,9 +719,8 @@ with st.sidebar:
             - Target: Call Wall above
             - Stop: Below GEX Support
             """)
-            if os.path.exists("bullish_setup_example.html"):
-                with open("bullish_setup_example.html", "r") as f:
-                    st.components.v1.html(f.read(), height=900, scrolling=True)
+            if os.path.exists("bullish_setup_simple.png"):
+                st.image("bullish_setup_simple.png", use_container_width=True)
 
         with tab2:
             st.markdown("""
@@ -727,9 +735,8 @@ with st.sidebar:
             - Target: Put Wall below
             - Stop: Above GEX Resistance
             """)
-            if os.path.exists("bearish_setup_example.html"):
-                with open("bearish_setup_example.html", "r") as f:
-                    st.components.v1.html(f.read(), height=900, scrolling=True)
+            if os.path.exists("bearish_setup_simple.png"):
+                st.image("bearish_setup_simple.png", use_container_width=True)
 
         with tab3:
             st.markdown("""
@@ -744,9 +751,8 @@ with st.sidebar:
             - SELL at GEX Resistance / Call Wall
             - Avoid breakout trades until Dealer Flow shifts decisively
             """)
-            if os.path.exists("range-bound_setup_example.html"):
-                with open("range-bound_setup_example.html", "r") as f:
-                    st.components.v1.html(f.read(), height=900, scrolling=True)
+            if os.path.exists("range-bound_setup_simple.png"):
+                st.image("range-bound_setup_simple.png", use_container_width=True)
 
         st.divider()
         st.caption("""
