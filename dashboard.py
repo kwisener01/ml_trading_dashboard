@@ -42,7 +42,7 @@ def create_options_flow_chart(pred, price_df, symbol):
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.03,
+        vertical_spacing=0.08,
         row_heights=[0.65, 0.175, 0.175],
         subplot_titles=(
             f"{symbol} - Options Flow Analysis",
