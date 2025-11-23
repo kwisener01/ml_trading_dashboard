@@ -73,8 +73,11 @@ def create_options_flow_chart(pred, price_df, symbol):
 
     # ========== PANEL 1: PRICE CHART ==========
 
-    # Add candlesticks if data available
-    if price_df is not None and not price_df.empty and len(price_df) > 0:
+    # Determine x-axis range
+    has_price_data = price_df is not None and not price_df.empty and len(price_df) > 0
+
+    if has_price_data:
+        # Use actual price data
         x_data = price_df.index if 'time' not in price_df.columns else price_df['time']
         fig.add_trace(go.Candlestick(
             x=x_data,
@@ -89,13 +92,22 @@ def create_options_flow_chart(pred, price_df, symbol):
             decreasing_fillcolor='#ef5350',
             showlegend=False
         ), row=1, col=1)
-
-    # Background shading for dealer flow regime
-    if price_df is not None and not price_df.empty:
-        x_range = [price_df.index[0] if 'time' not in price_df.columns else price_df['time'].iloc[0],
-                   price_df.index[-1] if 'time' not in price_df.columns else price_df['time'].iloc[-1]]
+        x_range = [x_data.iloc[0], x_data.iloc[-1]]
     else:
-        x_range = [0, 1]
+        # No price data - show current price as a single point
+        now = datetime.now(EST)
+        x_point = now
+        x_range = [now - timedelta(hours=2), now + timedelta(hours=2)]
+
+        # Add current price marker
+        fig.add_trace(go.Scatter(
+            x=[x_point],
+            y=[current],
+            mode='markers',
+            marker=dict(size=15, color='#2196F3', symbol='diamond'),
+            name='Current Price',
+            showlegend=False
+        ), row=1, col=1)
 
     # Add regime shading
     if gex_regime == 'positive':
@@ -236,12 +248,13 @@ def create_options_flow_chart(pred, price_df, symbol):
 
     # ========== PANEL 2: IV & VANNA ==========
 
-    # Create x-axis for panels 2 and 3 (single point or time series)
-    if price_df is not None and not price_df.empty:
+    # Create x-axis for panels 2 and 3
+    if has_price_data:
         panel_x = price_df.index if 'time' not in price_df.columns else price_df['time']
         panel_x_single = [panel_x.iloc[-1]]
     else:
-        panel_x_single = [0]
+        # Use current time when no price data
+        panel_x_single = [datetime.now(EST)]
 
     # IV (Implied Volatility)
     iv = pred.get('iv', 0.2) * 100  # Convert to percentage
@@ -923,6 +936,15 @@ if 'predictions' in st.session_state:
 
         # ========== MULTI-PANEL OPTIONS FLOW CHART ==========
         st.subheader("📊 Options Flow Analysis")
+
+        # Check market status
+        now = datetime.now(EST)
+        market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+        market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        is_market_hours = market_open <= now <= market_close and now.weekday() < 5
+
+        if not is_market_hours:
+            st.info("📊 **Market Closed** - Showing key levels only. Candlesticks will appear during market hours (9:30 AM - 4:00 PM EST, Mon-Fri)")
 
         # Fetch recent price data for candlesticks
         price_df = None
