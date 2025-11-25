@@ -54,12 +54,12 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.08,
-        row_heights=[0.65, 0.175, 0.175],
+        vertical_spacing=0.12,  # Increased spacing for better separation
+        row_heights=[0.55, 0.225, 0.225],  # More balanced height distribution
         subplot_titles=(
-            f"{symbol} - Options Flow Analysis",
-            "IV & Vanna Panel",
-            "Dealer Flow Panel"
+            f"<b>{symbol} - Options Flow Analysis</b>",
+            "<b>Panel 2: IV & Vanna Indicators</b>",
+            "<b>Panel 3: Dealer Flow Indicators</b>"
         ),
         specs=[[{"secondary_y": False}],
                [{"secondary_y": False}],
@@ -402,24 +402,50 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
 
     # Update layout
     fig.update_layout(
-        height=900,
+        height=1100,  # Increased height for better visibility
         showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         hovermode='x unified',
         template='plotly_dark',
         plot_bgcolor='rgba(0, 0, 0, 0)',
         paper_bgcolor='rgba(30, 30, 30, 1)',
-        margin=dict(l=50, r=120, t=80, b=50)
+        margin=dict(l=60, r=130, t=100, b=60)  # Increased margins for better spacing
     )
 
-    # Update y-axes labels
-    fig.update_yaxes(title_text="Price ($)", row=1, col=1)
-    fig.update_yaxes(title_text="IV/Vanna", row=2, col=1)
-    fig.update_yaxes(title_text="Dealer Flow", row=3, col=1, range=[-100, 100])
+    # Update y-axes labels with better styling
+    fig.update_yaxes(
+        title_text="<b>Price ($)</b>",
+        title_font=dict(size=14),
+        row=1, col=1,
+        gridcolor='rgba(128, 128, 128, 0.2)',
+        zeroline=False
+    )
+    fig.update_yaxes(
+        title_text="<b>IV / Vanna</b>",
+        title_font=dict(size=14),
+        row=2, col=1,
+        gridcolor='rgba(128, 128, 128, 0.2)',
+        zeroline=True,
+        zerolinecolor='rgba(128, 128, 128, 0.5)',
+        zerolinewidth=1
+    )
+    fig.update_yaxes(
+        title_text="<b>Dealer Flow Score</b>",
+        title_font=dict(size=14),
+        row=3, col=1,
+        range=[-100, 100],
+        gridcolor='rgba(128, 128, 128, 0.2)',
+        zeroline=True,
+        zerolinecolor='rgba(128, 128, 128, 0.5)',
+        zerolinewidth=2
+    )
 
     # Update x-axes
-    fig.update_xaxes(title_text="Time", row=3, col=1)
+    fig.update_xaxes(title_text="<b>Time</b>", title_font=dict(size=14), row=3, col=1)
     fig.update_xaxes(rangeslider_visible=False)
+
+    # Style subplot titles to be more prominent
+    fig.update_annotations(font=dict(size=16, color='white'))
 
     return fig
 
