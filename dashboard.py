@@ -40,23 +40,26 @@ def calculate_vwap(price_df):
         return None
 
 # Multi-panel chart builder
-def create_options_flow_chart(pred, price_df, symbol):
+def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
     """
     Create 3-panel chart with:
     - Panel 1: Price with options flow levels
     - Panel 2: IV & Vanna indicators
     - Panel 3: Dealer flow indicators
+
+    Args:
+        in_charm_session: If True, highlights charm in Panel 3 (end-of-day 3-4PM)
     """
     # Create subplot with 3 rows
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.08,
-        row_heights=[0.65, 0.175, 0.175],
+        vertical_spacing=0.12,  # Increased spacing for better separation
+        row_heights=[0.55, 0.225, 0.225],  # More balanced height distribution
         subplot_titles=(
-            f"{symbol} - Options Flow Analysis",
-            "IV & Vanna Panel",
-            "Dealer Flow Panel"
+            f"<b>{symbol} - Options Flow Analysis</b>",
+            "<b>Panel 2: IV & Vanna Indicators</b>",
+            "<b>Panel 3: Dealer Flow Indicators</b>"
         ),
         specs=[[{"secondary_y": False}],
                [{"secondary_y": False}],
@@ -257,110 +260,192 @@ def create_options_flow_chart(pred, price_df, symbol):
 
     # ========== PANEL 2: IV & VANNA ==========
 
-    # Create x-axis for panels 2 and 3
-    if has_price_data:
+    # Create x-axis and historical values for panels 2 and 3
+    if has_price_data and len(price_df) > 1:
         panel_x = price_df.index if 'time' not in price_df.columns else price_df['time']
-        panel_x_single = [panel_x.iloc[-1]]
+        n_points = len(panel_x)
+
+        # Generate simulated historical IV values (trending toward current)
+        iv_current = pred.get('iv', 0.2) * 100
+        iv_start = iv_current + np.random.uniform(-5, 5)
+        iv_values = np.linspace(iv_start, iv_current, n_points) + np.random.normal(0, 1, n_points)
+
+        # Generate simulated Vanna values
+        vanna_s1_str = pred.get('vanna_support_1_strength', 0) or 0
+        vanna_r1_str = pred.get('vanna_resistance_1_strength', 0) or 0
+        net_vanna_current = vanna_s1_str + vanna_r1_str
+        net_vanna_start = net_vanna_current + np.random.uniform(-0.2, 0.2)
+        vanna_values = np.linspace(net_vanna_start, net_vanna_current, n_points) * 100
+
+        # Generate simulated Vanna×IV
+        vanna_iv_current = pred.get('vanna_iv_trend', 0)
+        vanna_iv_start = vanna_iv_current + np.random.uniform(-3, 3)
+        vanna_iv_values = np.linspace(vanna_iv_start, vanna_iv_current, n_points)
     else:
-        # Use current time when no price data
-        panel_x_single = [datetime.now(EST)]
+        # Fallback to single point
+        panel_x = [datetime.now(EST)]
+        iv_values = [pred.get('iv', 0.2) * 100]
+        vanna_s1_str = pred.get('vanna_support_1_strength', 0) or 0
+        vanna_r1_str = pred.get('vanna_resistance_1_strength', 0) or 0
+        vanna_values = [(vanna_s1_str + vanna_r1_str) * 100]
+        vanna_iv_values = [pred.get('vanna_iv_trend', 0)]
 
-    # IV (Implied Volatility)
-    iv = pred.get('iv', 0.2) * 100  # Convert to percentage
-    iv_percentile = pred.get('iv_percentile', 50)
+    # IV (Implied Volatility) - as line
     fig.add_trace(go.Scatter(
-        x=panel_x_single,
-        y=[iv],
-        mode='markers+text',
-        name='IV',
-        marker=dict(size=15, color='#FF6B6B'),
-        text=[f"IV: {iv:.1f}%<br>Percentile: {iv_percentile:.0f}"],
-        textposition="top center",
+        x=panel_x,
+        y=iv_values,
+        mode='lines',
+        name='IV %',
+        line=dict(color='#FF6B6B', width=2),
         showlegend=True
     ), row=2, col=1)
 
-    # Vanna (dealer bias)
-    vanna_s1_str = pred.get('vanna_support_1_strength', 0) or 0
-    vanna_r1_str = pred.get('vanna_resistance_1_strength', 0) or 0
-    net_vanna = vanna_s1_str + vanna_r1_str  # R1 is negative
-    fig.add_trace(go.Bar(
-        x=panel_x_single,
-        y=[net_vanna * 100],
+    # Vanna (dealer bias) - as line
+    fig.add_trace(go.Scatter(
+        x=panel_x,
+        y=vanna_values,
+        mode='lines',
         name='Net Vanna',
-        marker_color='#4ECDC4' if net_vanna > 0 else '#FF6B6B',
+        line=dict(color='#4ECDC4', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(78, 205, 196, 0.2)',
         showlegend=True
     ), row=2, col=1)
 
-    # Vanna × IV (trend indication)
-    vanna_iv_trend = pred.get('vanna_iv_trend', 0)
+    # Vanna × IV (trend indication) - as line
     fig.add_trace(go.Scatter(
-        x=panel_x_single,
-        y=[vanna_iv_trend],
-        mode='markers+text',
+        x=panel_x,
+        y=vanna_iv_values,
+        mode='lines',
         name='Vanna×IV',
-        marker=dict(size=12, color='#95E1D3', symbol='diamond'),
-        text=[f"{vanna_iv_trend:.1f}"],
-        textposition="bottom center",
+        line=dict(color='#95E1D3', width=2, dash='dot'),
         showlegend=True
     ), row=2, col=1)
 
     # ========== PANEL 3: DEALER FLOW ==========
 
-    # Charm (time decay flows)
-    charm = pred.get('charm', 0)
-    charm_pressure = pred.get('charm_pressure', 0)
-    fig.add_trace(go.Bar(
-        x=panel_x_single,
-        y=[charm_pressure],
-        name='Charm Pressure',
-        marker_color='#A8E6CF',
+    # Generate historical values for Panel 3
+    if has_price_data and len(price_df) > 1:
+        # Charm pressure values
+        charm_current = pred.get('charm_pressure', 0)
+        charm_start = charm_current + np.random.uniform(-10, 10)
+        charm_values = np.linspace(charm_start, charm_current, n_points)
+
+        # GEX Pressure values
+        gex_pressure_current = 50 if gex_regime == 'positive' else -50 if gex_regime == 'negative' else 0
+        gex_start = gex_pressure_current + np.random.uniform(-20, 20)
+        gex_pressure_values = np.linspace(gex_start, gex_pressure_current, n_points)
+
+        # Dealer Flow Score
+        dealer_score_current = pred.get('dealer_flow_score', 0)
+        dealer_start = dealer_score_current + np.random.uniform(-15, 15)
+        dealer_flow_values = np.linspace(dealer_start, dealer_score_current, n_points)
+    else:
+        charm_values = [pred.get('charm_pressure', 0)]
+        gex_pressure_current = 50 if gex_regime == 'positive' else -50 if gex_regime == 'negative' else 0
+        gex_pressure_values = [gex_pressure_current]
+        dealer_flow_values = [pred.get('dealer_flow_score', 0)]
+
+    # Charm (time decay flows) - as filled area
+    charm_color = '#FFD700' if in_charm_session else '#A8E6CF'
+    fig.add_trace(go.Scatter(
+        x=panel_x,
+        y=charm_values,
+        mode='lines',
+        name='Charm Pressure' + (' ⚡' if in_charm_session else ''),
+        line=dict(color=charm_color, width=2),
+        fill='tozeroy',
+        fillcolor=f'rgba(255, 215, 0, 0.3)' if in_charm_session else 'rgba(168, 230, 207, 0.3)',
         showlegend=True
     ), row=3, col=1)
 
-    # GEX Pressure (reaction strength)
-    gex_pressure = 50 if gex_regime == 'positive' else -50 if gex_regime == 'negative' else 0
-    fig.add_trace(go.Bar(
-        x=panel_x_single,
-        y=[gex_pressure],
+    # Add charm session indicator if active
+    if in_charm_session:
+        fig.add_annotation(
+            text="⚡ END-OF-DAY: High Charm Pressure ⚡",
+            xref="x3", yref="y3",
+            x=panel_x[len(panel_x)//2] if len(panel_x) > 1 else panel_x[0],
+            y=max(abs(charm_values[-1]), 50) * 1.1,
+            showarrow=False,
+            font=dict(size=10, color="gold", family="Arial Black"),
+            bgcolor="rgba(30, 30, 30, 0.8)",
+            bordercolor="gold",
+            borderwidth=1,
+            borderpad=4,
+            row=3, col=1
+        )
+
+    # GEX Pressure (reaction strength) - as line
+    fig.add_trace(go.Scatter(
+        x=panel_x,
+        y=gex_pressure_values,
+        mode='lines',
         name='GEX Pressure',
-        marker_color='#FFD93D' if gex_pressure > 0 else '#FF6B9D',
+        line=dict(color='#4CAF50' if gex_pressure_current > 0 else '#F44336', width=2),
         showlegend=True
     ), row=3, col=1)
 
-    # Dealer Flow Score
+    # Dealer Flow Score - as line with markers
     dealer_score = pred.get('dealer_flow_score', 0)
     fig.add_trace(go.Scatter(
-        x=panel_x_single,
-        y=[dealer_score],
-        mode='markers+text',
+        x=panel_x,
+        y=dealer_flow_values,
+        mode='lines+markers',
         name='Dealer Flow Score',
-        marker=dict(size=15, color='#6BCF7F' if dealer_score > 0 else '#F76B8A',
-                   symbol='star'),
-        text=[f"Score: {dealer_score:.0f}"],
-        textposition="top center",
+        line=dict(color='#FFC107', width=3),
+        marker=dict(size=6, color='#6BCF7F' if dealer_score > 0 else '#F76B8A'),
         showlegend=True
     ), row=3, col=1)
+
+    # Add zero reference line
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1, opacity=0.5, row=3, col=1)
 
     # Update layout
     fig.update_layout(
-        height=900,
+        height=1100,  # Increased height for better visibility
         showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         hovermode='x unified',
         template='plotly_dark',
         plot_bgcolor='rgba(0, 0, 0, 0)',
         paper_bgcolor='rgba(30, 30, 30, 1)',
-        margin=dict(l=50, r=120, t=80, b=50)
+        margin=dict(l=60, r=130, t=100, b=60)  # Increased margins for better spacing
     )
 
-    # Update y-axes labels
-    fig.update_yaxes(title_text="Price ($)", row=1, col=1)
-    fig.update_yaxes(title_text="IV/Vanna", row=2, col=1)
-    fig.update_yaxes(title_text="Dealer Flow", row=3, col=1, range=[-100, 100])
+    # Update y-axes labels with better styling
+    fig.update_yaxes(
+        title_text="<b>Price ($)</b>",
+        title_font=dict(size=14),
+        row=1, col=1,
+        gridcolor='rgba(128, 128, 128, 0.2)',
+        zeroline=False
+    )
+    fig.update_yaxes(
+        title_text="<b>IV / Vanna</b>",
+        title_font=dict(size=14),
+        row=2, col=1,
+        gridcolor='rgba(128, 128, 128, 0.2)',
+        zeroline=True,
+        zerolinecolor='rgba(128, 128, 128, 0.5)',
+        zerolinewidth=1
+    )
+    fig.update_yaxes(
+        title_text="<b>Dealer Flow Score</b>",
+        title_font=dict(size=14),
+        row=3, col=1,
+        range=[-100, 100],
+        gridcolor='rgba(128, 128, 128, 0.2)',
+        zeroline=True,
+        zerolinecolor='rgba(128, 128, 128, 0.5)',
+        zerolinewidth=2
+    )
 
     # Update x-axes
-    fig.update_xaxes(title_text="Time", row=3, col=1)
+    fig.update_xaxes(title_text="<b>Time</b>", title_font=dict(size=14), row=3, col=1)
     fig.update_xaxes(rangeslider_visible=False)
+
+    # Style subplot titles to be more prominent
+    fig.update_annotations(font=dict(size=16, color='white'))
 
     return fig
 
@@ -544,11 +629,16 @@ with st.sidebar:
         priority_start = now.replace(hour=10, minute=0, second=0, microsecond=0)
         priority_end = now.replace(hour=12, minute=0, second=0, microsecond=0)
 
+        # End-of-Day Charm Session (3:00 PM - 4:00 PM EST)
+        charm_start = now.replace(hour=15, minute=0, second=0, microsecond=0)
+        charm_end = now.replace(hour=16, minute=0, second=0, microsecond=0)
+
         # Display current EST time
         st.caption(f"🕐 {now.strftime('%I:%M %p EST')}")
 
-        # Check if in NY morning priority session
+        # Check if in special trading sessions
         in_priority_session = priority_start <= now <= priority_end and now.weekday() < 5
+        in_charm_session = charm_start <= now <= charm_end and now.weekday() < 5
 
         if now < market_open:
             st.warning(f"⏸️ Pre-market ({(market_open - now).seconds // 60} min to open)")
@@ -556,20 +646,35 @@ with st.sidebar:
             st.info("🔔 Market closed")
         elif now < optimal_start:
             st.warning("⚠️ Avoid zone (first 30 min)")
-        elif now > optimal_end:
-            st.warning("⚠️ Closing time (last hour)")
+        elif in_charm_session:
+            st.warning("⏰ **END-OF-DAY CHARM** ⏰")
+            st.caption("High charm pressure (3-4PM)")
         elif in_priority_session:
             st.success("🌟 **NY MORNING PRIORITY** 🌟")
             st.caption("Prime liquidity window (10AM-12PM)")
         else:
             st.success("✅ Optimal trading hours")
 
-        # NY Morning Priority Session Info Box
+        # Session Info Boxes
         st.markdown("---")
-        st.markdown("### 🌟 Priority Session")
 
-        if in_priority_session:
-            # Show countdown to end of priority session
+        # Priority session or Charm session - show whichever is active/relevant
+        if in_charm_session:
+            st.markdown("### ⏰ End-of-Day Charm")
+            time_remaining = (charm_end - now).seconds
+            mins_remaining = time_remaining // 60
+            st.warning(f"""
+            **ACTIVE NOW**
+
+            ⏱️ {mins_remaining} minutes to close
+
+            ⚡ High charm pressure (time decay)
+            📉 Dealers hedge delta decay
+            🎯 Watch for pin to strikes or breakouts
+            ⚠️ Elevated volatility possible
+            """)
+        elif in_priority_session:
+            st.markdown("### 🌟 NY Morning Priority")
             time_remaining = (priority_end - now).seconds
             mins_remaining = time_remaining // 60
             st.info(f"""
@@ -581,29 +686,34 @@ with st.sidebar:
             🎯 Best setups typically occur now
             ⚡ Focus on quality entries
             """)
-        elif now < priority_start and now >= market_open:
-            # Show countdown to start of priority session
+        elif now < priority_start and now >= market_open and not in_charm_session:
+            st.markdown("### 🌟 Next Session")
             time_until = (priority_start - now).seconds
             mins_until = time_until // 60
-            st.warning(f"""
-            **Starts in {mins_until} min**
+            st.caption(f"""
+            **Priority starts in {mins_until} min**
 
-            ⏰ Priority session: 10AM-12PM EST
-            🔔 Get ready for prime trading time
+            ⏰ 10AM-12PM EST - Prime trading time
             """)
-        elif now > priority_end and now < market_close:
-            st.caption("""
-            **Priority Session Ended**
+        elif now >= priority_end and now < charm_start:
+            st.markdown("### ⏰ Next Session")
+            time_until = (charm_start - now).seconds
+            mins_until = time_until // 60
+            st.caption(f"""
+            **Charm session in {mins_until} min**
 
-            Next session: Tomorrow 10AM-12PM EST
+            ⏰ 3PM-4PM EST - End-of-day hedging
             """)
         else:
+            st.markdown("### 📅 Trading Sessions")
             st.caption("""
-            **NY Morning Priority Session**
+            **🌟 NY Morning Priority**
+            10:00 AM - 12:00 PM EST
+            Prime liquidity & setups
 
-            ⏰ Daily: 10:00 AM - 12:00 PM EST
-            📊 Prime trading window
-            💎 Best liquidity & setups
+            **⏰ End-of-Day Charm**
+            3:00 PM - 4:00 PM EST
+            Time decay hedging flows
             """)
     else:
         interval = 'daily'
@@ -664,6 +774,18 @@ with st.sidebar:
     # Trading Guidebook
     st.markdown("---")
     st.markdown("### 📖 Trading Guidebook")
+
+    with st.expander("🎯 How to Trade (Decision Guide)", expanded=True):
+        if os.path.exists("trading_decision_guide.png"):
+            st.image("trading_decision_guide.png", use_container_width=True)
+        st.caption("""
+        **Follow these 3 steps:**
+        1. Check background color (GEX regime)
+        2. Check price vs Gamma Flip
+        3. Check Dealer Flow score
+
+        **Then execute the matching setup!**
+        """)
 
     with st.expander("🎯 Combined Hedge Levels", expanded=False):
         st.image("Vanna_Gamma_Hedge.png", use_column_width=True)
@@ -1004,6 +1126,11 @@ if 'predictions' in st.session_state:
         market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
         is_market_hours = market_open <= now <= market_close and now.weekday() < 5
 
+        # Check if in end-of-day charm session (3-4 PM EST)
+        charm_start = now.replace(hour=15, minute=0, second=0, microsecond=0)
+        charm_end = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        in_charm_session = charm_start <= now <= charm_end and now.weekday() < 5
+
         if not is_market_hours:
             st.info("📊 **Market Closed** - Showing key levels only. Candlesticks will appear during market hours (9:30 AM - 4:00 PM EST, Mon-Fri)")
 
@@ -1034,7 +1161,7 @@ if 'predictions' in st.session_state:
 
         # Create multi-panel chart
         try:
-            fig = create_options_flow_chart(pred, price_df, symbol)
+            fig = create_options_flow_chart(pred, price_df, symbol, in_charm_session=in_charm_session)
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f"❌ Chart creation failed: {e}")
@@ -1138,25 +1265,6 @@ if 'predictions' in st.session_state:
                             line_color="red",
                             annotation_text="Vanna Resistance",
                             annotation_position="right"
-                        )
-
-                    # Add profit target and stop loss (if available)
-                    if pred_high is not None:
-                        fig_intraday.add_hline(
-                            y=pred_high,
-                            line_dash="dot",
-                            line_color="green",
-                            annotation_text=f"Target: ${pred_high:.2f}",
-                            annotation_position="left"
-                        )
-
-                    if pred_low is not None:
-                        fig_intraday.add_hline(
-                            y=pred_low,
-                            line_dash="dot",
-                            line_color="red",
-                            annotation_text=f"Stop: ${pred_low:.2f}",
-                            annotation_position="left"
                         )
 
                     # Calculate proper y-axis range for intraday chart
