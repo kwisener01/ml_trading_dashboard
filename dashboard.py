@@ -446,6 +446,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
     # Update layout
     fig.update_layout(
         height=1100,  # Increased height for better visibility
+        autosize=True,  # Enable responsive sizing
         showlegend=True,
         legend=dict(
             orientation="v",  # Vertical legend beside chart
@@ -462,7 +463,13 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
         template='plotly_dark',
         plot_bgcolor='rgba(0, 0, 0, 0)',
         paper_bgcolor='rgba(30, 30, 30, 1)',
-        margin=dict(l=150, r=200, t=100, b=60)  # Increased left margin for level labels
+        margin=dict(l=150, r=200, t=100, b=60),  # Increased left margin for level labels
+        # Mobile-friendly defaults
+        dragmode='pan',  # Better for touch devices
+        modebar=dict(
+            orientation='v',
+            bgcolor='rgba(30, 30, 30, 0.8)'
+        )
     )
 
     # Update y-axes labels with better styling
@@ -542,7 +549,12 @@ def ensure_latest_models():
 # Download models at startup
 ensure_latest_models()
 
-# Custom CSS
+# Add viewport meta tag for mobile responsiveness
+st.markdown("""
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+""", unsafe_allow_html=True)
+
+# Custom CSS with mobile responsiveness
 st.markdown("""
 <style>
     .big-font {
@@ -569,6 +581,129 @@ st.markdown("""
     .signal-bad {
         background-color: #f8d7da;
         color: #721c24;
+    }
+
+    /* Global mobile improvements */
+    * {
+        -webkit-tap-highlight-color: rgba(0,0,0,0);
+        -webkit-touch-callout: none;
+    }
+
+    html {
+        scroll-behavior: smooth;
+        -webkit-text-size-adjust: 100%;
+    }
+
+    /* Mobile Responsiveness */
+    @media (max-width: 768px) {
+        /* Reduce title size on mobile */
+        h1 {
+            font-size: 1.5rem !important;
+        }
+        h2 {
+            font-size: 1.3rem !important;
+        }
+        h3 {
+            font-size: 1.1rem !important;
+        }
+
+        /* Make trade signals more compact */
+        .trade-signal {
+            font-size: 18px !important;
+            padding: 10px !important;
+        }
+
+        /* Adjust metric boxes for mobile */
+        .metric-box {
+            padding: 12px !important;
+            margin: 5px 0 !important;
+        }
+
+        /* Make buttons full width on mobile */
+        .stButton button {
+            width: 100% !important;
+        }
+
+        /* Reduce padding in main container */
+        .main .block-container {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+
+        /* Stack columns on mobile */
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 100% !important;
+            max-width: 100% !important;
+        }
+
+        /* Improve touch targets */
+        button, a, input, select {
+            min-height: 44px !important;
+        }
+
+        /* Reduce sidebar width on mobile */
+        [data-testid="stSidebar"] {
+            min-width: 250px !important;
+        }
+
+        /* Make charts responsive */
+        .js-plotly-plot {
+            width: 100% !important;
+        }
+
+        /* Adjust plotly chart margins for mobile */
+        .js-plotly-plot .plotly .main-svg {
+            max-width: 100% !important;
+        }
+
+        /* Improve plotly modebar on mobile */
+        .modebar {
+            top: 0 !important;
+            right: 0 !important;
+        }
+
+        /* Adjust font sizes in sidebar */
+        .sidebar .markdown-text-container {
+            font-size: 0.9rem !important;
+        }
+
+        /* Make expanders more touch-friendly */
+        .streamlit-expanderHeader {
+            font-size: 1rem !important;
+            padding: 12px !important;
+        }
+    }
+
+    /* Extra small devices (phones in portrait, less than 576px) */
+    @media (max-width: 576px) {
+        h1 {
+            font-size: 1.3rem !important;
+        }
+        h2 {
+            font-size: 1.1rem !important;
+        }
+        h3 {
+            font-size: 1rem !important;
+        }
+
+        .trade-signal {
+            font-size: 16px !important;
+            padding: 8px !important;
+        }
+
+        /* Even more compact metrics */
+        [data-testid="metric-container"] {
+            padding: 5px !important;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-size: 1.2rem !important;
+        }
+
+        [data-testid="stMetricLabel"] {
+            font-size: 0.8rem !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1446,9 +1581,16 @@ if 'predictions' in st.session_state:
                         ),
                         xaxis=dict(title='Time'),
                         height=500,
+                        autosize=True,  # Enable responsive sizing
                         hovermode='x unified',
                         legend=dict(x=0, y=1.05, orientation='h'),
-                        margin=dict(l=60, r=60, t=50, b=50)
+                        margin=dict(l=60, r=60, t=50, b=50),
+                        # Mobile-friendly defaults
+                        dragmode='pan',  # Better for touch devices
+                        modebar=dict(
+                            orientation='v',
+                            bgcolor='rgba(30, 30, 30, 0.8)'
+                        )
                     )
 
                     st.plotly_chart(fig_intraday, use_container_width=True)
