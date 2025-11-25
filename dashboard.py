@@ -142,10 +142,11 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
 
     # Helper to check if level is within valid range
     def level_valid(level, pct=0.05):
-        return level and abs(level - current) / current <= pct
+        """Check if level is valid and within pct% of current price"""
+        return level is not None and abs(level - current) / current <= pct
 
-    # Add Gamma Flip (Major Pivot)
-    if gex_flip and level_valid(gex_flip):
+    # Add Gamma Flip (Major Pivot) - always show if available, no distance restriction
+    if gex_flip is not None:
         fig.add_hline(
             y=gex_flip,
             line_dash="solid",
@@ -157,8 +158,8 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
             row=1, col=1
         )
 
-    # Add GEX Walls (S/R Zones)
-    if gex_support and level_valid(gex_support):
+    # Add GEX Walls (S/R Zones) - always show if available, no distance restriction
+    if gex_support is not None:
         fig.add_hline(
             y=gex_support,
             line_dash="dash",
@@ -170,7 +171,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
             row=1, col=1
         )
 
-    if gex_resistance and level_valid(gex_resistance):
+    if gex_resistance is not None:
         fig.add_hline(
             y=gex_resistance,
             line_dash="dash",
@@ -239,11 +240,12 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
         fig.add_hline(
             y=vwap,
             line_dash="solid",
-            line_color="#FFC107",
+            line_color="#FFD700",  # Gold color
             line_width=2,
-            annotation_text=f"VWAP: ${vwap:.2f} (Dynamic Balance)",
+            opacity=0.8,
+            annotation_text=f"VWAP: ${vwap:.2f}",
             annotation_position="right",
-            annotation=dict(font=dict(size=9, color="black"), bgcolor="#FFF9C4"),
+            annotation=dict(font=dict(size=10, color="white"), bgcolor="#FF8F00"),  # Dark orange bg
             row=1, col=1
         )
 
@@ -460,7 +462,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
         template='plotly_dark',
         plot_bgcolor='rgba(0, 0, 0, 0)',
         paper_bgcolor='rgba(30, 30, 30, 1)',
-        margin=dict(l=60, r=200, t=100, b=60)  # Increased right margin for legend
+        margin=dict(l=150, r=200, t=100, b=60)  # Increased left margin for level labels
     )
 
     # Update y-axes labels with better styling
@@ -1067,7 +1069,7 @@ if 'predictions' in st.session_state:
             pressure_factors.append("GEX- (momentum)")
 
         # Price relative to GEX flip
-        if gex_flip and current:
+        if gex_flip is not None and current is not None:
             if current > gex_flip:
                 pressure_score += 15
                 pressure_factors.append(f"Above GEX Flip (${gex_flip:.0f})")
@@ -1076,8 +1078,8 @@ if 'predictions' in st.session_state:
                 pressure_factors.append(f"Below GEX Flip (${gex_flip:.0f})")
 
         # Distance to support levels (closer = more bullish)
-        support_levels = [l for l in [vanna_s1, vanna_s2, gex_support] if l and abs(l - current) / current <= 0.05]
-        resistance_levels = [l for l in [vanna_r1, vanna_r2, gex_resistance] if l and abs(l - current) / current <= 0.05]
+        support_levels = [l for l in [vanna_s1, vanna_s2, gex_support] if l is not None and abs(l - current) / current <= 0.05]
+        resistance_levels = [l for l in [vanna_r1, vanna_r2, gex_resistance] if l is not None and abs(l - current) / current <= 0.05]
 
         if support_levels:
             nearest_support = max(support_levels)
@@ -1445,35 +1447,35 @@ if 'predictions' in st.session_state:
                         gex_sup_val = pred.get('gex_support')
                         gex_res_val = pred.get('gex_resistance')
 
-                        if gex_flip_val:
+                        if gex_flip_val is not None:
                             st.success(f"✅ Gamma Flip: ${gex_flip_val:.2f}")
                         else:
-                            st.error(f"❌ Gamma Flip: {gex_flip_val}")
+                            st.error(f"❌ Gamma Flip: None")
 
-                        if gex_sup_val:
+                        if gex_sup_val is not None:
                             st.success(f"✅ GEX Support: ${gex_sup_val:.2f}")
                         else:
-                            st.error(f"❌ GEX Support: {gex_sup_val}")
+                            st.error(f"❌ GEX Support: None")
 
-                        if gex_res_val:
+                        if gex_res_val is not None:
                             st.success(f"✅ GEX Resistance: ${gex_res_val:.2f}")
                         else:
-                            st.error(f"❌ GEX Resistance: {gex_res_val}")
+                            st.error(f"❌ GEX Resistance: None")
 
                     with col2:
                         st.write("**Vanna Levels:**")
                         vanna_sup = pred.get('vanna_support_1')
                         vanna_res = pred.get('vanna_resistance_1')
 
-                        if vanna_sup:
+                        if vanna_sup is not None:
                             st.success(f"✅ Vanna Support: ${vanna_sup:.2f}")
                         else:
-                            st.error(f"❌ Vanna Support: {vanna_sup}")
+                            st.error(f"❌ Vanna Support: None")
 
-                        if vanna_res:
+                        if vanna_res is not None:
                             st.success(f"✅ Vanna Resistance: ${vanna_res:.2f}")
                         else:
-                            st.error(f"❌ Vanna Resistance: {vanna_res}")
+                            st.error(f"❌ Vanna Resistance: None")
 
                         st.write(f"**GEX Regime:** {pred.get('gex_regime', 'unknown')}")
 
