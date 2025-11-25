@@ -1380,6 +1380,19 @@ if 'predictions' in st.session_state:
                             st.write("**Note:** Vanna levels are calculated mathematically and don't require live options data, which is why they still work.")
                     else:
                         st.warning("⚠️ **GEX/Gamma levels not available** - This could be due to insufficient options data or market being closed. Vanna levels should still be visible.")
+
+                        # Debug info
+                        with st.expander("🔧 Debug Info"):
+                            st.write(f"**gex_error value:** `{repr(gex_error)}`")
+                            st.write(f"**All GEX-related values:**")
+                            st.write(f"- gex_flip: {gex_flip}")
+                            st.write(f"- gex_support: {gex_support}")
+                            st.write(f"- gex_resistance: {gex_resistance}")
+                            st.write(f"- gex_regime: {pred.get('gex_regime')}")
+                            st.write(f"- gex_current: {pred.get('gex_current')}")
+                            st.write("")
+                            st.write("**This debug info will help diagnose the issue.**")
+                            st.write("The GEX calculator is likely returning empty results without raising an exception.")
                 else:
                     st.success(f"✅ **GEX Levels Active:** Gamma Flip: ${gex_flip:.2f if gex_flip else 'N/A'} | Support: ${gex_support:.0f if gex_support else 'N/A'} | Resistance: ${gex_resistance:.0f if gex_resistance else 'N/A'}")
             else:
