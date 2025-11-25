@@ -449,21 +449,21 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
         autosize=True,  # Enable responsive sizing
         showlegend=True,
         legend=dict(
-            orientation="v",  # Vertical legend beside chart
-            yanchor="top",
-            y=0.98,
-            xanchor="left",
-            x=1.01,  # Position just outside the right edge
+            orientation="h",  # Horizontal legend for mobile compatibility
+            yanchor="bottom",
+            y=-0.15,  # Position below chart
+            xanchor="center",
+            x=0.5,
             bgcolor="rgba(30, 30, 30, 0.9)",
             bordercolor="rgba(255, 255, 255, 0.3)",
             borderwidth=1,
-            font=dict(size=11)
+            font=dict(size=10)
         ),
         hovermode='x unified',
         template='plotly_dark',
         plot_bgcolor='rgba(0, 0, 0, 0)',
         paper_bgcolor='rgba(30, 30, 30, 1)',
-        margin=dict(l=150, r=200, t=100, b=60),  # Increased left margin for level labels
+        margin=dict(l=60, r=40, t=100, b=120),  # Reduced margins for mobile, extra bottom for legend
         # Mobile-friendly defaults
         dragmode='pan',  # Better for touch devices
         modebar=dict(
@@ -749,6 +749,7 @@ with st.sidebar:
     trading_mode = st.radio(
         "Select Mode",
         ["Daily Trading", "Day Trading (Intraday)"],
+        index=1,  # Default to Day Trading (Intraday)
         help="Daily = Swing trades, Day Trading = 5min intraday"
     )
 
@@ -767,44 +768,37 @@ with st.sidebar:
             # Set refresh interval based on chart interval
             refresh_intervals = {'1min': 60, '5min': 300, '15min': 900}
             refresh_seconds = refresh_intervals.get(interval, 300)
-            refresh_ms = refresh_seconds * 1000
 
             st.caption(f"Refreshing every {refresh_seconds // 60} min")
 
-            # JavaScript-based auto-refresh for reliability
-            st.markdown(
-                f"""
-                <script>
-                    var refreshInterval = {refresh_ms};
-                    var countdown = refreshInterval / 1000;
+            # Initialize last refresh time if not exists
+            if 'last_refresh_time' not in st.session_state:
+                st.session_state['last_refresh_time'] = time.time()
+                st.session_state['generate_prediction'] = True
+                st.session_state['trading_mode'] = trading_mode
+                st.session_state['interval'] = interval
 
-                    function updateCountdown() {{
-                        var mins = Math.floor(countdown / 60);
-                        var secs = countdown % 60;
-                        var display = mins + ":" + (secs < 10 ? "0" : "") + secs;
-                        var elem = document.getElementById("countdown-display");
-                        if (elem) elem.innerText = "Next refresh: " + display;
+            # Check if it's time to refresh
+            current_time = time.time()
+            time_since_refresh = current_time - st.session_state['last_refresh_time']
 
-                        if (countdown <= 0) {{
-                            window.location.reload();
-                        }} else {{
-                            countdown--;
-                            setTimeout(updateCountdown, 1000);
-                        }}
-                    }}
+            if time_since_refresh >= refresh_seconds:
+                # Time to refresh!
+                st.session_state['last_refresh_time'] = current_time
+                st.session_state['generate_prediction'] = True
+                st.session_state['trading_mode'] = trading_mode
+                st.session_state['interval'] = interval
+                st.rerun()
+            else:
+                # Show countdown
+                time_remaining = int(refresh_seconds - time_since_refresh)
+                mins_remaining = time_remaining // 60
+                secs_remaining = time_remaining % 60
+                st.info(f"🔄 Next refresh in: {mins_remaining}:{secs_remaining:02d}")
 
-                    // Start countdown
-                    setTimeout(updateCountdown, 1000);
-                </script>
-                <p id="countdown-display" style="font-size: 12px; color: gray;">Starting countdown...</p>
-                """,
-                unsafe_allow_html=True
-            )
-
-            # Also trigger prediction generation on auto-refresh
-            st.session_state['generate_prediction'] = True
-            st.session_state['trading_mode'] = trading_mode
-            st.session_state['interval'] = interval
+                # Use st.empty() to trigger a rerun after a short delay
+                time.sleep(1)
+                st.rerun()
 
         # Show market hours status (in EST)
         now = datetime.now(EST)
