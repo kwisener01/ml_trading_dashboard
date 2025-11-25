@@ -55,8 +55,8 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.12,  # Increased spacing for better separation
-        row_heights=[0.55, 0.225, 0.225],  # More balanced height distribution
+        vertical_spacing=0.20,  # Increased spacing significantly for mobile
+        row_heights=[0.50, 0.25, 0.25],  # Adjusted for better mobile visibility
         subplot_titles=(
             f"<b>{symbol} - Options Flow Analysis</b>",
             "<b>Panel 2: IV & Vanna Indicators</b>",
@@ -445,13 +445,13 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
 
     # Update layout
     fig.update_layout(
-        height=1100,  # Increased height for better visibility
+        height=1800,  # Significantly increased height for mobile visibility
         autosize=True,  # Enable responsive sizing
         showlegend=True,
         legend=dict(
             orientation="h",  # Horizontal legend for mobile compatibility
             yanchor="bottom",
-            y=-0.15,  # Position below chart
+            y=-0.08,  # Position below chart (adjusted for taller chart)
             xanchor="center",
             x=0.5,
             bgcolor="rgba(30, 30, 30, 0.9)",
@@ -463,7 +463,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
         template='plotly_dark',
         plot_bgcolor='rgba(0, 0, 0, 0)',
         paper_bgcolor='rgba(30, 30, 30, 1)',
-        margin=dict(l=60, r=40, t=100, b=120),  # Reduced margins for mobile, extra bottom for legend
+        margin=dict(l=60, r=40, t=100, b=100),  # Reduced margins for mobile, bottom for legend
         # Mobile-friendly defaults
         dragmode='pan',  # Better for touch devices
         modebar=dict(
@@ -1360,6 +1360,16 @@ if 'predictions' in st.session_state:
                                            in_priority_session=in_priority_session)
             if fig is not None:
                 st.plotly_chart(fig, use_container_width=True)
+
+                # GEX Level Status Display
+                gex_flip = pred.get('gex_zero_level')
+                gex_support = pred.get('gex_support')
+                gex_resistance = pred.get('gex_resistance')
+
+                if gex_flip is None and gex_support is None and gex_resistance is None:
+                    st.warning("⚠️ **GEX/Gamma levels not available** - This could be due to insufficient options data or market being closed. Vanna levels should still be visible.")
+                else:
+                    st.success(f"✅ **GEX Levels Active:** Gamma Flip: ${gex_flip:.2f if gex_flip else 'N/A'} | Support: ${gex_support:.0f if gex_support else 'N/A'} | Resistance: ${gex_resistance:.0f if gex_resistance else 'N/A'}")
             else:
                 st.error("❌ Chart function returned None")
                 st.caption("Debug info:")
