@@ -347,15 +347,32 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
         dealer_flow_values = [pred.get('dealer_flow_score', 0)]
 
     # Charm (time decay flows) - as filled area
-    charm_color = '#FFD700' if in_charm_session else '#A8E6CF'
+    # Color based on bullish (green) vs bearish (red) pressure
+    charm_current = pred.get('charm_pressure', 0)
+    is_charm_bullish = charm_current > 0
+
+    # Base colors: green for bullish, red for bearish
+    if is_charm_bullish:
+        charm_color = '#4CAF50'  # Green for bullish
+        charm_fill = 'rgba(76, 175, 80, 0.3)'
+    else:
+        charm_color = '#F44336'  # Red for bearish
+        charm_fill = 'rgba(244, 67, 54, 0.3)'
+
+    # Add extra emphasis during charm session (3-4PM)
+    charm_label = 'Charm Pressure'
+    if in_charm_session:
+        charm_label += ' ⚡ (EOD ACTIVE)'
+        charm_color = '#FFD700' if is_charm_bullish else '#FF6B00'  # Gold/Orange during session
+
     fig.add_trace(go.Scatter(
         x=panel_x,
         y=charm_values,
         mode='lines',
-        name='Charm Pressure' + (' ⚡' if in_charm_session else ''),
-        line=dict(color=charm_color, width=2),
+        name=charm_label,
+        line=dict(color=charm_color, width=3 if in_charm_session else 2),
         fill='tozeroy',
-        fillcolor=f'rgba(255, 215, 0, 0.3)' if in_charm_session else 'rgba(168, 230, 207, 0.3)',
+        fillcolor=charm_fill,
         showlegend=True
     ), row=3, col=1)
 
