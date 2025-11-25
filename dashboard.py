@@ -55,8 +55,8 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.12,  # Increased spacing for better separation
-        row_heights=[0.55, 0.225, 0.225],  # More balanced height distribution
+        vertical_spacing=0.20,  # Increased spacing significantly for mobile
+        row_heights=[0.50, 0.25, 0.25],  # Adjusted for better mobile visibility
         subplot_titles=(
             f"<b>{symbol} - Options Flow Analysis</b>",
             "<b>Panel 2: IV & Vanna Indicators</b>",
@@ -445,24 +445,31 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
 
     # Update layout
     fig.update_layout(
-        height=1100,  # Increased height for better visibility
+        height=1800,  # Significantly increased height for mobile visibility
+        autosize=True,  # Enable responsive sizing
         showlegend=True,
         legend=dict(
-            orientation="v",  # Vertical legend beside chart
-            yanchor="top",
-            y=0.98,
-            xanchor="left",
-            x=1.01,  # Position just outside the right edge
+            orientation="h",  # Horizontal legend for mobile compatibility
+            yanchor="bottom",
+            y=-0.08,  # Position below chart (adjusted for taller chart)
+            xanchor="center",
+            x=0.5,
             bgcolor="rgba(30, 30, 30, 0.9)",
             bordercolor="rgba(255, 255, 255, 0.3)",
             borderwidth=1,
-            font=dict(size=11)
+            font=dict(size=10)
         ),
         hovermode='x unified',
         template='plotly_dark',
         plot_bgcolor='rgba(0, 0, 0, 0)',
         paper_bgcolor='rgba(30, 30, 30, 1)',
-        margin=dict(l=150, r=200, t=100, b=60)  # Increased left margin for level labels
+        margin=dict(l=60, r=40, t=100, b=100),  # Reduced margins for mobile, bottom for legend
+        # Mobile-friendly defaults
+        dragmode='pan',  # Better for touch devices
+        modebar=dict(
+            orientation='v',
+            bgcolor='rgba(30, 30, 30, 0.8)'
+        )
     )
 
     # Update y-axes labels with better styling
@@ -542,7 +549,12 @@ def ensure_latest_models():
 # Download models at startup
 ensure_latest_models()
 
-# Custom CSS
+# Add viewport meta tag for mobile responsiveness
+st.markdown("""
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+""", unsafe_allow_html=True)
+
+# Custom CSS with mobile responsiveness
 st.markdown("""
 <style>
     .big-font {
@@ -569,6 +581,129 @@ st.markdown("""
     .signal-bad {
         background-color: #f8d7da;
         color: #721c24;
+    }
+
+    /* Global mobile improvements */
+    * {
+        -webkit-tap-highlight-color: rgba(0,0,0,0);
+        -webkit-touch-callout: none;
+    }
+
+    html {
+        scroll-behavior: smooth;
+        -webkit-text-size-adjust: 100%;
+    }
+
+    /* Mobile Responsiveness */
+    @media (max-width: 768px) {
+        /* Reduce title size on mobile */
+        h1 {
+            font-size: 1.5rem !important;
+        }
+        h2 {
+            font-size: 1.3rem !important;
+        }
+        h3 {
+            font-size: 1.1rem !important;
+        }
+
+        /* Make trade signals more compact */
+        .trade-signal {
+            font-size: 18px !important;
+            padding: 10px !important;
+        }
+
+        /* Adjust metric boxes for mobile */
+        .metric-box {
+            padding: 12px !important;
+            margin: 5px 0 !important;
+        }
+
+        /* Make buttons full width on mobile */
+        .stButton button {
+            width: 100% !important;
+        }
+
+        /* Reduce padding in main container */
+        .main .block-container {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+
+        /* Stack columns on mobile */
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 100% !important;
+            max-width: 100% !important;
+        }
+
+        /* Improve touch targets */
+        button, a, input, select {
+            min-height: 44px !important;
+        }
+
+        /* Reduce sidebar width on mobile */
+        [data-testid="stSidebar"] {
+            min-width: 250px !important;
+        }
+
+        /* Make charts responsive */
+        .js-plotly-plot {
+            width: 100% !important;
+        }
+
+        /* Adjust plotly chart margins for mobile */
+        .js-plotly-plot .plotly .main-svg {
+            max-width: 100% !important;
+        }
+
+        /* Improve plotly modebar on mobile */
+        .modebar {
+            top: 0 !important;
+            right: 0 !important;
+        }
+
+        /* Adjust font sizes in sidebar */
+        .sidebar .markdown-text-container {
+            font-size: 0.9rem !important;
+        }
+
+        /* Make expanders more touch-friendly */
+        .streamlit-expanderHeader {
+            font-size: 1rem !important;
+            padding: 12px !important;
+        }
+    }
+
+    /* Extra small devices (phones in portrait, less than 576px) */
+    @media (max-width: 576px) {
+        h1 {
+            font-size: 1.3rem !important;
+        }
+        h2 {
+            font-size: 1.1rem !important;
+        }
+        h3 {
+            font-size: 1rem !important;
+        }
+
+        .trade-signal {
+            font-size: 16px !important;
+            padding: 8px !important;
+        }
+
+        /* Even more compact metrics */
+        [data-testid="metric-container"] {
+            padding: 5px !important;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-size: 1.2rem !important;
+        }
+
+        [data-testid="stMetricLabel"] {
+            font-size: 0.8rem !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -614,6 +749,7 @@ with st.sidebar:
     trading_mode = st.radio(
         "Select Mode",
         ["Daily Trading", "Day Trading (Intraday)"],
+        index=1,  # Default to Day Trading (Intraday)
         help="Daily = Swing trades, Day Trading = 5min intraday"
     )
 
@@ -632,44 +768,37 @@ with st.sidebar:
             # Set refresh interval based on chart interval
             refresh_intervals = {'1min': 60, '5min': 300, '15min': 900}
             refresh_seconds = refresh_intervals.get(interval, 300)
-            refresh_ms = refresh_seconds * 1000
 
             st.caption(f"Refreshing every {refresh_seconds // 60} min")
 
-            # JavaScript-based auto-refresh for reliability
-            st.markdown(
-                f"""
-                <script>
-                    var refreshInterval = {refresh_ms};
-                    var countdown = refreshInterval / 1000;
+            # Initialize last refresh time if not exists
+            if 'last_refresh_time' not in st.session_state:
+                st.session_state['last_refresh_time'] = time.time()
+                st.session_state['generate_prediction'] = True
+                st.session_state['trading_mode'] = trading_mode
+                st.session_state['interval'] = interval
 
-                    function updateCountdown() {{
-                        var mins = Math.floor(countdown / 60);
-                        var secs = countdown % 60;
-                        var display = mins + ":" + (secs < 10 ? "0" : "") + secs;
-                        var elem = document.getElementById("countdown-display");
-                        if (elem) elem.innerText = "Next refresh: " + display;
+            # Check if it's time to refresh
+            current_time = time.time()
+            time_since_refresh = current_time - st.session_state['last_refresh_time']
 
-                        if (countdown <= 0) {{
-                            window.location.reload();
-                        }} else {{
-                            countdown--;
-                            setTimeout(updateCountdown, 1000);
-                        }}
-                    }}
+            if time_since_refresh >= refresh_seconds:
+                # Time to refresh!
+                st.session_state['last_refresh_time'] = current_time
+                st.session_state['generate_prediction'] = True
+                st.session_state['trading_mode'] = trading_mode
+                st.session_state['interval'] = interval
+                st.rerun()
+            else:
+                # Show countdown
+                time_remaining = int(refresh_seconds - time_since_refresh)
+                mins_remaining = time_remaining // 60
+                secs_remaining = time_remaining % 60
+                st.info(f"🔄 Next refresh in: {mins_remaining}:{secs_remaining:02d}")
 
-                    // Start countdown
-                    setTimeout(updateCountdown, 1000);
-                </script>
-                <p id="countdown-display" style="font-size: 12px; color: gray;">Starting countdown...</p>
-                """,
-                unsafe_allow_html=True
-            )
-
-            # Also trigger prediction generation on auto-refresh
-            st.session_state['generate_prediction'] = True
-            st.session_state['trading_mode'] = trading_mode
-            st.session_state['interval'] = interval
+                # Use st.empty() to trigger a rerun after a short delay
+                time.sleep(1)
+                st.rerun()
 
         # Show market hours status (in EST)
         now = datetime.now(EST)
@@ -983,6 +1112,13 @@ if 'predictions' in st.session_state:
         Try again during market hours or check your API token.
         """)
     else:
+        # Refresh button at top
+        col_refresh1, col_refresh2 = st.columns([6, 1])
+        with col_refresh2:
+            if st.button("🔄 Refresh", type="secondary", key="refresh_prediction"):
+                st.session_state['generate_prediction'] = True
+                st.rerun()
+
         # Header row
         col1, col2, col3 = st.columns([2, 1, 1])
 
@@ -1222,12 +1358,32 @@ if 'predictions' in st.session_state:
             fig = create_options_flow_chart(pred, price_df, symbol,
                                            in_charm_session=in_charm_session,
                                            in_priority_session=in_priority_session)
-            st.plotly_chart(fig, use_container_width=True)
+            if fig is not None:
+                st.plotly_chart(fig, use_container_width=True)
+
+                # GEX Level Status Display
+                gex_flip = pred.get('gex_zero_level')
+                gex_support = pred.get('gex_support')
+                gex_resistance = pred.get('gex_resistance')
+
+                if gex_flip is None and gex_support is None and gex_resistance is None:
+                    st.warning("⚠️ **GEX/Gamma levels not available** - This could be due to insufficient options data or market being closed. Vanna levels should still be visible.")
+                else:
+                    st.success(f"✅ **GEX Levels Active:** Gamma Flip: ${gex_flip:.2f if gex_flip else 'N/A'} | Support: ${gex_support:.0f if gex_support else 'N/A'} | Resistance: ${gex_resistance:.0f if gex_resistance else 'N/A'}")
+            else:
+                st.error("❌ Chart function returned None")
+                st.caption("Debug info:")
+                st.write(f"- price_df empty: {price_df is None or price_df.empty if price_df is not None else 'price_df is None'}")
+                st.write(f"- symbol: {symbol}")
+                st.write(f"- pred keys: {list(pred.keys())[:10]}")
         except Exception as e:
             st.error(f"❌ Chart creation failed: {e}")
+            st.caption("Debug info:")
+            st.write(f"- Error type: {type(e).__name__}")
+            st.write(f"- price_df: {'None' if price_df is None else f'{len(price_df)} rows' if hasattr(price_df, '__len__') else 'exists'}")
             import traceback
-            st.code(traceback.format_exc())
-            st.caption("⚠️ If this persists, try refreshing the page or restarting the app")
+            with st.expander("Full Traceback"):
+                st.code(traceback.format_exc())
 
         # Chart legend with clear descriptions
         st.markdown("""
@@ -1429,55 +1585,19 @@ if 'predictions' in st.session_state:
                         ),
                         xaxis=dict(title='Time'),
                         height=500,
+                        autosize=True,  # Enable responsive sizing
                         hovermode='x unified',
                         legend=dict(x=0, y=1.05, orientation='h'),
-                        margin=dict(l=60, r=60, t=50, b=50)
+                        margin=dict(l=60, r=60, t=50, b=50),
+                        # Mobile-friendly defaults
+                        dragmode='pan',  # Better for touch devices
+                        modebar=dict(
+                            orientation='v',
+                            bgcolor='rgba(30, 30, 30, 0.8)'
+                        )
                     )
 
                     st.plotly_chart(fig_intraday, use_container_width=True)
-
-                    # Show level status
-                    st.markdown("---")
-                    st.markdown("### 🔍 Level Check")
-
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.write("**GEX Levels:**")
-                        gex_flip_val = pred.get('gex_zero_level')
-                        gex_sup_val = pred.get('gex_support')
-                        gex_res_val = pred.get('gex_resistance')
-
-                        if gex_flip_val is not None:
-                            st.success(f"✅ Gamma Flip: ${gex_flip_val:.2f}")
-                        else:
-                            st.error(f"❌ Gamma Flip: None")
-
-                        if gex_sup_val is not None:
-                            st.success(f"✅ GEX Support: ${gex_sup_val:.2f}")
-                        else:
-                            st.error(f"❌ GEX Support: None")
-
-                        if gex_res_val is not None:
-                            st.success(f"✅ GEX Resistance: ${gex_res_val:.2f}")
-                        else:
-                            st.error(f"❌ GEX Resistance: None")
-
-                    with col2:
-                        st.write("**Vanna Levels:**")
-                        vanna_sup = pred.get('vanna_support_1')
-                        vanna_res = pred.get('vanna_resistance_1')
-
-                        if vanna_sup is not None:
-                            st.success(f"✅ Vanna Support: ${vanna_sup:.2f}")
-                        else:
-                            st.error(f"❌ Vanna Support: None")
-
-                        if vanna_res is not None:
-                            st.success(f"✅ Vanna Resistance: ${vanna_res:.2f}")
-                        else:
-                            st.error(f"❌ Vanna Resistance: None")
-
-                        st.write(f"**GEX Regime:** {pred.get('gex_regime', 'unknown')}")
 
                     # Intraday statistics
                     col1, col2, col3, col4 = st.columns(4)
@@ -1521,6 +1641,49 @@ if 'predictions' in st.session_state:
                     st.write(f"Error details: {str(e)}")
                     import traceback
                     st.code(traceback.format_exc())
+
+        # Show level status (always visible after prediction)
+        st.markdown("---")
+        st.markdown("### 🔍 Level Check")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**GEX Levels:**")
+            gex_flip_val = pred.get('gex_zero_level')
+            gex_sup_val = pred.get('gex_support')
+            gex_res_val = pred.get('gex_resistance')
+
+            if gex_flip_val is not None:
+                st.success(f"✅ Gamma Flip: ${gex_flip_val:.2f}")
+            else:
+                st.error(f"❌ Gamma Flip: None")
+
+            if gex_sup_val is not None:
+                st.success(f"✅ GEX Support: ${gex_sup_val:.2f}")
+            else:
+                st.error(f"❌ GEX Support: None")
+
+            if gex_res_val is not None:
+                st.success(f"✅ GEX Resistance: ${gex_res_val:.2f}")
+            else:
+                st.error(f"❌ GEX Resistance: None")
+
+        with col2:
+            st.write("**Vanna Levels:**")
+            vanna_sup = pred.get('vanna_support_1')
+            vanna_res = pred.get('vanna_resistance_1')
+
+            if vanna_sup is not None:
+                st.success(f"✅ Vanna Support: ${vanna_sup:.2f}")
+            else:
+                st.error(f"❌ Vanna Support: None")
+
+            if vanna_res is not None:
+                st.success(f"✅ Vanna Resistance: ${vanna_res:.2f}")
+            else:
+                st.error(f"❌ Vanna Resistance: None")
+
+            st.write(f"**GEX Regime:** {pred.get('gex_regime', 'unknown')}")
 
         # Market conditions
         col1, col2 = st.columns(2)
