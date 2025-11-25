@@ -40,7 +40,7 @@ def calculate_vwap(price_df):
         return None
 
 # Multi-panel chart builder
-def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
+def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in_priority_session=False):
     """
     Create 3-panel chart with:
     - Panel 1: Price with options flow levels
@@ -49,6 +49,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
 
     Args:
         in_charm_session: If True, highlights charm in Panel 3 (end-of-day 3-4PM)
+        in_priority_session: If True, highlights GEX in Panel 3 (NY morning 10AM-12PM)
     """
     # Create subplot with 3 rows
     fig = make_subplots(
@@ -393,14 +394,37 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
         )
 
     # GEX Pressure (reaction strength) - as line
+    # Add extra emphasis during NY morning priority session (10AM-12PM)
+    gex_label = 'GEX Pressure'
+    gex_width = 2
+    if in_priority_session:
+        gex_label += ' 🌟 (NY MORNING)'
+        gex_width = 4  # Thicker during priority session
+
     fig.add_trace(go.Scatter(
         x=panel_x,
         y=gex_pressure_values,
         mode='lines',
-        name='GEX Pressure',
-        line=dict(color='#4CAF50' if gex_pressure_current > 0 else '#F44336', width=2),
+        name=gex_label,
+        line=dict(color='#4CAF50' if gex_pressure_current > 0 else '#F44336', width=gex_width),
         showlegend=True
     ), row=3, col=1)
+
+    # Add priority session indicator for GEX if active
+    if in_priority_session:
+        fig.add_annotation(
+            text="🌟 NY MORNING: High GEX Impact 🌟",
+            xref="x3", yref="y3",
+            x=panel_x[len(panel_x)//2] if len(panel_x) > 1 else panel_x[0],
+            y=-80,  # Position near bottom
+            showarrow=False,
+            font=dict(size=10, color="lime", family="Arial Black"),
+            bgcolor="rgba(30, 30, 30, 0.8)",
+            bordercolor="lime",
+            borderwidth=1,
+            borderpad=4,
+            row=3, col=1
+        )
 
     # Dealer Flow Score - as line with markers
     dealer_score = pred.get('dealer_flow_score', 0)
@@ -421,12 +445,22 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
     fig.update_layout(
         height=1100,  # Increased height for better visibility
         showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        legend=dict(
+            orientation="v",  # Vertical legend beside chart
+            yanchor="top",
+            y=0.98,
+            xanchor="left",
+            x=1.01,  # Position just outside the right edge
+            bgcolor="rgba(30, 30, 30, 0.9)",
+            bordercolor="rgba(255, 255, 255, 0.3)",
+            borderwidth=1,
+            font=dict(size=11)
+        ),
         hovermode='x unified',
         template='plotly_dark',
         plot_bgcolor='rgba(0, 0, 0, 0)',
         paper_bgcolor='rgba(30, 30, 30, 1)',
-        margin=dict(l=60, r=130, t=100, b=60)  # Increased margins for better spacing
+        margin=dict(l=60, r=200, t=100, b=60)  # Increased right margin for legend
     )
 
     # Update y-axes labels with better styling
@@ -1148,6 +1182,11 @@ if 'predictions' in st.session_state:
         charm_end = now.replace(hour=16, minute=0, second=0, microsecond=0)
         in_charm_session = charm_start <= now <= charm_end and now.weekday() < 5
 
+        # Check if in NY morning priority session (10 AM - 12 PM EST)
+        priority_start = now.replace(hour=10, minute=0, second=0, microsecond=0)
+        priority_end = now.replace(hour=12, minute=0, second=0, microsecond=0)
+        in_priority_session = priority_start <= now <= priority_end and now.weekday() < 5
+
         if not is_market_hours:
             st.info("📊 **Market Closed** - Showing key levels only. Candlesticks will appear during market hours (9:30 AM - 4:00 PM EST, Mon-Fri)")
 
@@ -1178,7 +1217,9 @@ if 'predictions' in st.session_state:
 
         # Create multi-panel chart
         try:
-            fig = create_options_flow_chart(pred, price_df, symbol, in_charm_session=in_charm_session)
+            fig = create_options_flow_chart(pred, price_df, symbol,
+                                           in_charm_session=in_charm_session,
+                                           in_priority_session=in_priority_session)
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f"❌ Chart creation failed: {e}")
