@@ -40,7 +40,7 @@ def calculate_vwap(price_df):
         return None
 
 # Multi-panel chart builder
-def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
+def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in_priority_session=False):
     """
     Create 3-panel chart with:
     - Panel 1: Price with options flow levels
@@ -49,6 +49,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
 
     Args:
         in_charm_session: If True, highlights charm in Panel 3 (end-of-day 3-4PM)
+        in_priority_session: If True, highlights GEX in Panel 3 (NY morning 10AM-12PM)
     """
     # Create subplot with 3 rows
     fig = make_subplots(
@@ -141,10 +142,11 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
 
     # Helper to check if level is within valid range
     def level_valid(level, pct=0.05):
-        return level and abs(level - current) / current <= pct
+        """Check if level is valid and within pct% of current price"""
+        return level is not None and abs(level - current) / current <= pct
 
-    # Add Gamma Flip (Major Pivot)
-    if gex_flip and level_valid(gex_flip):
+    # Add Gamma Flip (Major Pivot) - always show if available, no distance restriction
+    if gex_flip is not None:
         fig.add_hline(
             y=gex_flip,
             line_dash="solid",
@@ -156,8 +158,8 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
             row=1, col=1
         )
 
-    # Add GEX Walls (S/R Zones)
-    if gex_support and level_valid(gex_support):
+    # Add GEX Walls (S/R Zones) - always show if available, no distance restriction
+    if gex_support is not None:
         fig.add_hline(
             y=gex_support,
             line_dash="dash",
@@ -169,7 +171,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
             row=1, col=1
         )
 
-    if gex_resistance and level_valid(gex_resistance):
+    if gex_resistance is not None:
         fig.add_hline(
             y=gex_resistance,
             line_dash="dash",
@@ -238,11 +240,12 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
         fig.add_hline(
             y=vwap,
             line_dash="solid",
-            line_color="#FFC107",
+            line_color="#FFD700",  # Gold color
             line_width=2,
-            annotation_text=f"VWAP: ${vwap:.2f} (Dynamic Balance)",
+            opacity=0.8,
+            annotation_text=f"VWAP: ${vwap:.2f}",
             annotation_position="right",
-            annotation=dict(font=dict(size=9, color="black"), bgcolor="#FFF9C4"),
+            annotation=dict(font=dict(size=10, color="white"), bgcolor="#FF8F00"),  # Dark orange bg
             row=1, col=1
         )
 
@@ -347,15 +350,32 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
         dealer_flow_values = [pred.get('dealer_flow_score', 0)]
 
     # Charm (time decay flows) - as filled area
-    charm_color = '#FFD700' if in_charm_session else '#A8E6CF'
+    # Color based on bullish (green) vs bearish (red) pressure
+    charm_current = pred.get('charm_pressure', 0)
+    is_charm_bullish = charm_current > 0
+
+    # Base colors: green for bullish, red for bearish
+    if is_charm_bullish:
+        charm_color = '#4CAF50'  # Green for bullish
+        charm_fill = 'rgba(76, 175, 80, 0.3)'
+    else:
+        charm_color = '#F44336'  # Red for bearish
+        charm_fill = 'rgba(244, 67, 54, 0.3)'
+
+    # Add extra emphasis during charm session (3-4PM)
+    charm_label = 'Charm Pressure'
+    if in_charm_session:
+        charm_label += ' ⚡ (EOD ACTIVE)'
+        charm_color = '#FFD700' if is_charm_bullish else '#FF6B00'  # Gold/Orange during session
+
     fig.add_trace(go.Scatter(
         x=panel_x,
         y=charm_values,
         mode='lines',
-        name='Charm Pressure' + (' ⚡' if in_charm_session else ''),
-        line=dict(color=charm_color, width=2),
+        name=charm_label,
+        line=dict(color=charm_color, width=3 if in_charm_session else 2),
         fill='tozeroy',
-        fillcolor=f'rgba(255, 215, 0, 0.3)' if in_charm_session else 'rgba(168, 230, 207, 0.3)',
+        fillcolor=charm_fill,
         showlegend=True
     ), row=3, col=1)
 
@@ -376,14 +396,37 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
         )
 
     # GEX Pressure (reaction strength) - as line
+    # Add extra emphasis during NY morning priority session (10AM-12PM)
+    gex_label = 'GEX Pressure'
+    gex_width = 2
+    if in_priority_session:
+        gex_label += ' 🌟 (NY MORNING)'
+        gex_width = 4  # Thicker during priority session
+
     fig.add_trace(go.Scatter(
         x=panel_x,
         y=gex_pressure_values,
         mode='lines',
-        name='GEX Pressure',
-        line=dict(color='#4CAF50' if gex_pressure_current > 0 else '#F44336', width=2),
+        name=gex_label,
+        line=dict(color='#4CAF50' if gex_pressure_current > 0 else '#F44336', width=gex_width),
         showlegend=True
     ), row=3, col=1)
+
+    # Add priority session indicator for GEX if active
+    if in_priority_session:
+        fig.add_annotation(
+            text="🌟 NY MORNING: High GEX Impact 🌟",
+            xref="x3", yref="y3",
+            x=panel_x[len(panel_x)//2] if len(panel_x) > 1 else panel_x[0],
+            y=-80,  # Position near bottom
+            showarrow=False,
+            font=dict(size=10, color="lime", family="Arial Black"),
+            bgcolor="rgba(30, 30, 30, 0.8)",
+            bordercolor="lime",
+            borderwidth=1,
+            borderpad=4,
+            row=3, col=1
+        )
 
     # Dealer Flow Score - as line with markers
     dealer_score = pred.get('dealer_flow_score', 0)
@@ -404,12 +447,22 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False):
     fig.update_layout(
         height=1100,  # Increased height for better visibility
         showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        legend=dict(
+            orientation="v",  # Vertical legend beside chart
+            yanchor="top",
+            y=0.98,
+            xanchor="left",
+            x=1.01,  # Position just outside the right edge
+            bgcolor="rgba(30, 30, 30, 0.9)",
+            bordercolor="rgba(255, 255, 255, 0.3)",
+            borderwidth=1,
+            font=dict(size=11)
+        ),
         hovermode='x unified',
         template='plotly_dark',
         plot_bgcolor='rgba(0, 0, 0, 0)',
         paper_bgcolor='rgba(30, 30, 30, 1)',
-        margin=dict(l=60, r=130, t=100, b=60)  # Increased margins for better spacing
+        margin=dict(l=150, r=200, t=100, b=60)  # Increased left margin for level labels
     )
 
     # Update y-axes labels with better styling
@@ -1016,7 +1069,7 @@ if 'predictions' in st.session_state:
             pressure_factors.append("GEX- (momentum)")
 
         # Price relative to GEX flip
-        if gex_flip and current:
+        if gex_flip is not None and current is not None:
             if current > gex_flip:
                 pressure_score += 15
                 pressure_factors.append(f"Above GEX Flip (${gex_flip:.0f})")
@@ -1025,8 +1078,8 @@ if 'predictions' in st.session_state:
                 pressure_factors.append(f"Below GEX Flip (${gex_flip:.0f})")
 
         # Distance to support levels (closer = more bullish)
-        support_levels = [l for l in [vanna_s1, vanna_s2, gex_support] if l and abs(l - current) / current <= 0.05]
-        resistance_levels = [l for l in [vanna_r1, vanna_r2, gex_resistance] if l and abs(l - current) / current <= 0.05]
+        support_levels = [l for l in [vanna_s1, vanna_s2, gex_support] if l is not None and abs(l - current) / current <= 0.05]
+        resistance_levels = [l for l in [vanna_r1, vanna_r2, gex_resistance] if l is not None and abs(l - current) / current <= 0.05]
 
         if support_levels:
             nearest_support = max(support_levels)
@@ -1131,6 +1184,11 @@ if 'predictions' in st.session_state:
         charm_end = now.replace(hour=16, minute=0, second=0, microsecond=0)
         in_charm_session = charm_start <= now <= charm_end and now.weekday() < 5
 
+        # Check if in NY morning priority session (10 AM - 12 PM EST)
+        priority_start = now.replace(hour=10, minute=0, second=0, microsecond=0)
+        priority_end = now.replace(hour=12, minute=0, second=0, microsecond=0)
+        in_priority_session = priority_start <= now <= priority_end and now.weekday() < 5
+
         if not is_market_hours:
             st.info("📊 **Market Closed** - Showing key levels only. Candlesticks will appear during market hours (9:30 AM - 4:00 PM EST, Mon-Fri)")
 
@@ -1161,7 +1219,9 @@ if 'predictions' in st.session_state:
 
         # Create multi-panel chart
         try:
-            fig = create_options_flow_chart(pred, price_df, symbol, in_charm_session=in_charm_session)
+            fig = create_options_flow_chart(pred, price_df, symbol,
+                                           in_charm_session=in_charm_session,
+                                           in_priority_session=in_priority_session)
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f"❌ Chart creation failed: {e}")
@@ -1239,6 +1299,27 @@ if 'predictions' in st.session_state:
                         name='Price'
                     )])
 
+                    # Add GEX regime background shading
+                    gex_regime = pred.get('gex_regime', 'unknown')
+                    if gex_regime == 'positive':
+                        # Green background for positive GEX (mean reversion)
+                        fig_intraday.add_vrect(
+                            x0=intraday_df['time'].iloc[0],
+                            x1=intraday_df['time'].iloc[-1],
+                            fillcolor="rgba(0, 255, 0, 0.05)",
+                            layer="below",
+                            line_width=0
+                        )
+                    elif gex_regime == 'negative':
+                        # Red background for negative GEX (momentum)
+                        fig_intraday.add_vrect(
+                            x0=intraday_df['time'].iloc[0],
+                            x1=intraday_df['time'].iloc[-1],
+                            fillcolor="rgba(255, 0, 0, 0.05)",
+                            layer="below",
+                            line_width=0
+                        )
+
                     # Add volume bars
                     fig_intraday.add_trace(go.Bar(
                         x=intraday_df['time'],
@@ -1248,23 +1329,82 @@ if 'predictions' in st.session_state:
                         marker_color='rgba(100, 100, 255, 0.3)'
                     ))
 
-                    # Add Vanna levels if available
-                    if 'vanna_support_1' in pred and pred.get('vanna_support_1'):
+                    # Add key levels for intraday trading
+
+                    # Gamma Flip (MOST IMPORTANT - Major pivot)
+                    gex_flip = pred.get('gex_zero_level')
+                    if gex_flip is not None:
                         fig_intraday.add_hline(
-                            y=pred['vanna_support_1'],
+                            y=gex_flip,
+                            line_dash="solid",
+                            line_color="#00BCD4",
+                            line_width=3,
+                            annotation_text=f"GAMMA FLIP: ${gex_flip:.2f}",
+                            annotation_position="left",
+                            annotation=dict(font=dict(size=10, color="white"), bgcolor="#00838F")
+                        )
+
+                    # GEX Support (Strong floor)
+                    gex_support = pred.get('gex_support')
+                    if gex_support is not None:
+                        fig_intraday.add_hline(
+                            y=gex_support,
                             line_dash="dash",
-                            line_color="green",
-                            annotation_text="Vanna Support",
+                            line_color="#76FF03",
+                            line_width=2,
+                            annotation_text=f"GEX Support: ${gex_support:.0f}",
+                            annotation_position="left",
+                            annotation=dict(font=dict(size=9, color="white"), bgcolor="#33691E")
+                        )
+
+                    # GEX Resistance (Strong ceiling)
+                    gex_resistance = pred.get('gex_resistance')
+                    if gex_resistance is not None:
+                        fig_intraday.add_hline(
+                            y=gex_resistance,
+                            line_dash="dash",
+                            line_color="#FF1744",
+                            line_width=2,
+                            annotation_text=f"GEX Resistance: ${gex_resistance:.0f}",
+                            annotation_position="left",
+                            annotation=dict(font=dict(size=9, color="white"), bgcolor="#B71C1C")
+                        )
+
+                    # Vanna Support (Bounce zone)
+                    vanna_support = pred.get('vanna_support_1')
+                    if vanna_support is not None:
+                        fig_intraday.add_hline(
+                            y=vanna_support,
+                            line_dash="dot",
+                            line_color="#00E676",
+                            line_width=2,
+                            annotation_text=f"Vanna Support: ${vanna_support:.2f}",
                             annotation_position="right"
                         )
 
-                    if 'vanna_resistance_1' in pred and pred.get('vanna_resistance_1'):
+                    # Vanna Resistance (Rejection zone)
+                    vanna_resistance = pred.get('vanna_resistance_1')
+                    if vanna_resistance is not None:
                         fig_intraday.add_hline(
-                            y=pred['vanna_resistance_1'],
-                            line_dash="dash",
-                            line_color="red",
-                            annotation_text="Vanna Resistance",
+                            y=vanna_resistance,
+                            line_dash="dot",
+                            line_color="#FF5252",
+                            line_width=2,
+                            annotation_text=f"Vanna Resistance: ${vanna_resistance:.2f}",
                             annotation_position="right"
+                        )
+
+                    # Current Price
+                    current_price = pred.get('current_price')
+                    if current_price is not None:
+                        fig_intraday.add_hline(
+                            y=current_price,
+                            line_dash="solid",
+                            line_color="#2196F3",
+                            line_width=2,
+                            annotation_text=f"Current: ${current_price:.2f}",
+                            annotation_position="left",
+                            annotation=dict(font=dict(size=10, color="white"), bgcolor="#2196F3")
                         )
 
                     # Calculate proper y-axis range for intraday chart
@@ -1295,6 +1435,49 @@ if 'predictions' in st.session_state:
                     )
 
                     st.plotly_chart(fig_intraday, use_container_width=True)
+
+                    # Show level status
+                    st.markdown("---")
+                    st.markdown("### 🔍 Level Check")
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write("**GEX Levels:**")
+                        gex_flip_val = pred.get('gex_zero_level')
+                        gex_sup_val = pred.get('gex_support')
+                        gex_res_val = pred.get('gex_resistance')
+
+                        if gex_flip_val is not None:
+                            st.success(f"✅ Gamma Flip: ${gex_flip_val:.2f}")
+                        else:
+                            st.error(f"❌ Gamma Flip: None")
+
+                        if gex_sup_val is not None:
+                            st.success(f"✅ GEX Support: ${gex_sup_val:.2f}")
+                        else:
+                            st.error(f"❌ GEX Support: None")
+
+                        if gex_res_val is not None:
+                            st.success(f"✅ GEX Resistance: ${gex_res_val:.2f}")
+                        else:
+                            st.error(f"❌ GEX Resistance: None")
+
+                    with col2:
+                        st.write("**Vanna Levels:**")
+                        vanna_sup = pred.get('vanna_support_1')
+                        vanna_res = pred.get('vanna_resistance_1')
+
+                        if vanna_sup is not None:
+                            st.success(f"✅ Vanna Support: ${vanna_sup:.2f}")
+                        else:
+                            st.error(f"❌ Vanna Support: None")
+
+                        if vanna_res is not None:
+                            st.success(f"✅ Vanna Resistance: ${vanna_res:.2f}")
+                        else:
+                            st.error(f"❌ Vanna Resistance: None")
+
+                        st.write(f"**GEX Regime:** {pred.get('gex_regime', 'unknown')}")
 
                     # Intraday statistics
                     col1, col2, col3, col4 = st.columns(4)
