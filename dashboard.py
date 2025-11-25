@@ -1297,6 +1297,27 @@ if 'predictions' in st.session_state:
                         name='Price'
                     )])
 
+                    # Add GEX regime background shading
+                    gex_regime = pred.get('gex_regime', 'unknown')
+                    if gex_regime == 'positive':
+                        # Green background for positive GEX (mean reversion)
+                        fig_intraday.add_vrect(
+                            x0=intraday_df['time'].iloc[0],
+                            x1=intraday_df['time'].iloc[-1],
+                            fillcolor="rgba(0, 255, 0, 0.05)",
+                            layer="below",
+                            line_width=0
+                        )
+                    elif gex_regime == 'negative':
+                        # Red background for negative GEX (momentum)
+                        fig_intraday.add_vrect(
+                            x0=intraday_df['time'].iloc[0],
+                            x1=intraday_df['time'].iloc[-1],
+                            fillcolor="rgba(255, 0, 0, 0.05)",
+                            layer="below",
+                            line_width=0
+                        )
+
                     # Add volume bars
                     fig_intraday.add_trace(go.Bar(
                         x=intraday_df['time'],
@@ -1306,24 +1327,76 @@ if 'predictions' in st.session_state:
                         marker_color='rgba(100, 100, 255, 0.3)'
                     ))
 
-                    # Add Vanna levels if available
+                    # Add key levels for intraday trading
+
+                    # Gamma Flip (MOST IMPORTANT - Major pivot)
+                    if 'gex_zero_level' in pred and pred.get('gex_zero_level'):
+                        fig_intraday.add_hline(
+                            y=pred['gex_zero_level'],
+                            line_dash="solid",
+                            line_color="#00BCD4",
+                            line_width=3,
+                            annotation_text=f"GAMMA FLIP: ${pred['gex_zero_level']:.2f}",
+                            annotation_position="left",
+                            annotation=dict(font=dict(size=10, color="white"), bgcolor="#00838F")
+                        )
+
+                    # GEX Support (Strong floor)
+                    if 'gex_support' in pred and pred.get('gex_support'):
+                        fig_intraday.add_hline(
+                            y=pred['gex_support'],
+                            line_dash="dash",
+                            line_color="#76FF03",
+                            line_width=2,
+                            annotation_text=f"GEX Support: ${pred['gex_support']:.0f}",
+                            annotation_position="left",
+                            annotation=dict(font=dict(size=9, color="white"), bgcolor="#33691E")
+                        )
+
+                    # GEX Resistance (Strong ceiling)
+                    if 'gex_resistance' in pred and pred.get('gex_resistance'):
+                        fig_intraday.add_hline(
+                            y=pred['gex_resistance'],
+                            line_dash="dash",
+                            line_color="#FF1744",
+                            line_width=2,
+                            annotation_text=f"GEX Resistance: ${pred['gex_resistance']:.0f}",
+                            annotation_position="left",
+                            annotation=dict(font=dict(size=9, color="white"), bgcolor="#B71C1C")
+                        )
+
+                    # Vanna Support (Bounce zone)
                     if 'vanna_support_1' in pred and pred.get('vanna_support_1'):
                         fig_intraday.add_hline(
                             y=pred['vanna_support_1'],
-                            line_dash="dash",
-                            line_color="green",
-                            annotation_text="Vanna Support",
+                            line_dash="dot",
+                            line_color="#00E676",
+                            line_width=2,
+                            annotation_text=f"Vanna Support: ${pred['vanna_support_1']:.2f}",
                             annotation_position="right"
                         )
 
+                    # Vanna Resistance (Rejection zone)
                     if 'vanna_resistance_1' in pred and pred.get('vanna_resistance_1'):
                         fig_intraday.add_hline(
                             y=pred['vanna_resistance_1'],
-                            line_dash="dash",
-                            line_color="red",
-                            annotation_text="Vanna Resistance",
+                            line_dash="dot",
+                            line_color="#FF5252",
+                            line_width=2,
+                            annotation_text=f"Vanna Resistance: ${pred['vanna_resistance_1']:.2f}",
                             annotation_position="right"
                         )
+
+                    # Current Price
+                    fig_intraday.add_hline(
+                        y=pred['current_price'],
+                        line_dash="solid",
+                        line_color="#2196F3",
+                        line_width=2,
+                        annotation_text=f"Current: ${pred['current_price']:.2f}",
+                        annotation_position="left",
+                        annotation=dict(font=dict(size=10, color="white"), bgcolor="#2196F3")
+                    )
 
                     # Calculate proper y-axis range for intraday chart
                     intraday_low = intraday_df['low'].min()
