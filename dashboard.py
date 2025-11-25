@@ -1330,73 +1330,80 @@ if 'predictions' in st.session_state:
                     # Add key levels for intraday trading
 
                     # Gamma Flip (MOST IMPORTANT - Major pivot)
-                    if 'gex_zero_level' in pred and pred.get('gex_zero_level'):
+                    gex_flip = pred.get('gex_zero_level')
+                    if gex_flip is not None:
                         fig_intraday.add_hline(
-                            y=pred['gex_zero_level'],
+                            y=gex_flip,
                             line_dash="solid",
                             line_color="#00BCD4",
                             line_width=3,
-                            annotation_text=f"GAMMA FLIP: ${pred['gex_zero_level']:.2f}",
+                            annotation_text=f"GAMMA FLIP: ${gex_flip:.2f}",
                             annotation_position="left",
                             annotation=dict(font=dict(size=10, color="white"), bgcolor="#00838F")
                         )
 
                     # GEX Support (Strong floor)
-                    if 'gex_support' in pred and pred.get('gex_support'):
+                    gex_support = pred.get('gex_support')
+                    if gex_support is not None:
                         fig_intraday.add_hline(
-                            y=pred['gex_support'],
+                            y=gex_support,
                             line_dash="dash",
                             line_color="#76FF03",
                             line_width=2,
-                            annotation_text=f"GEX Support: ${pred['gex_support']:.0f}",
+                            annotation_text=f"GEX Support: ${gex_support:.0f}",
                             annotation_position="left",
                             annotation=dict(font=dict(size=9, color="white"), bgcolor="#33691E")
                         )
 
                     # GEX Resistance (Strong ceiling)
-                    if 'gex_resistance' in pred and pred.get('gex_resistance'):
+                    gex_resistance = pred.get('gex_resistance')
+                    if gex_resistance is not None:
                         fig_intraday.add_hline(
-                            y=pred['gex_resistance'],
+                            y=gex_resistance,
                             line_dash="dash",
                             line_color="#FF1744",
                             line_width=2,
-                            annotation_text=f"GEX Resistance: ${pred['gex_resistance']:.0f}",
+                            annotation_text=f"GEX Resistance: ${gex_resistance:.0f}",
                             annotation_position="left",
                             annotation=dict(font=dict(size=9, color="white"), bgcolor="#B71C1C")
                         )
 
                     # Vanna Support (Bounce zone)
-                    if 'vanna_support_1' in pred and pred.get('vanna_support_1'):
+                    vanna_support = pred.get('vanna_support_1')
+                    if vanna_support is not None:
                         fig_intraday.add_hline(
-                            y=pred['vanna_support_1'],
+                            y=vanna_support,
                             line_dash="dot",
                             line_color="#00E676",
                             line_width=2,
-                            annotation_text=f"Vanna Support: ${pred['vanna_support_1']:.2f}",
+                            annotation_text=f"Vanna Support: ${vanna_support:.2f}",
                             annotation_position="right"
                         )
 
                     # Vanna Resistance (Rejection zone)
-                    if 'vanna_resistance_1' in pred and pred.get('vanna_resistance_1'):
+                    vanna_resistance = pred.get('vanna_resistance_1')
+                    if vanna_resistance is not None:
                         fig_intraday.add_hline(
-                            y=pred['vanna_resistance_1'],
+                            y=vanna_resistance,
                             line_dash="dot",
                             line_color="#FF5252",
                             line_width=2,
-                            annotation_text=f"Vanna Resistance: ${pred['vanna_resistance_1']:.2f}",
+                            annotation_text=f"Vanna Resistance: ${vanna_resistance:.2f}",
                             annotation_position="right"
                         )
 
                     # Current Price
-                    fig_intraday.add_hline(
-                        y=pred['current_price'],
-                        line_dash="solid",
-                        line_color="#2196F3",
-                        line_width=2,
-                        annotation_text=f"Current: ${pred['current_price']:.2f}",
-                        annotation_position="left",
-                        annotation=dict(font=dict(size=10, color="white"), bgcolor="#2196F3")
-                    )
+                    current_price = pred.get('current_price')
+                    if current_price is not None:
+                        fig_intraday.add_hline(
+                            y=current_price,
+                            line_dash="solid",
+                            line_color="#2196F3",
+                            line_width=2,
+                            annotation_text=f"Current: ${current_price:.2f}",
+                            annotation_position="left",
+                            annotation=dict(font=dict(size=10, color="white"), bgcolor="#2196F3")
+                        )
 
                     # Calculate proper y-axis range for intraday chart
                     intraday_low = intraday_df['low'].min()
@@ -1426,6 +1433,18 @@ if 'predictions' in st.session_state:
                     )
 
                     st.plotly_chart(fig_intraday, use_container_width=True)
+
+                    # Debug info for levels
+                    with st.expander("📊 Level Status (Debug)", expanded=False):
+                        st.write("**GEX Levels:**")
+                        st.write(f"- Gamma Flip: {pred.get('gex_zero_level')}")
+                        st.write(f"- GEX Support: {pred.get('gex_support')}")
+                        st.write(f"- GEX Resistance: {pred.get('gex_resistance')}")
+                        st.write("**Vanna Levels:**")
+                        st.write(f"- Vanna Support: {pred.get('vanna_support_1')}")
+                        st.write(f"- Vanna Resistance: {pred.get('vanna_resistance_1')}")
+                        st.write(f"**Current Price:** {pred.get('current_price')}")
+                        st.write(f"**GEX Regime:** {pred.get('gex_regime')}")
 
                     # Intraday statistics
                     col1, col2, col3, col4 = st.columns(4)
