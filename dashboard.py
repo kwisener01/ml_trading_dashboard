@@ -983,6 +983,13 @@ if 'predictions' in st.session_state:
         Try again during market hours or check your API token.
         """)
     else:
+        # Refresh button at top
+        col_refresh1, col_refresh2 = st.columns([6, 1])
+        with col_refresh2:
+            if st.button("🔄 Refresh", type="secondary", key="refresh_prediction"):
+                st.session_state['generate_prediction'] = True
+                st.rerun()
+
         # Header row
         col1, col2, col3 = st.columns([2, 1, 1])
 
@@ -1436,49 +1443,6 @@ if 'predictions' in st.session_state:
 
                     st.plotly_chart(fig_intraday, use_container_width=True)
 
-                    # Show level status
-                    st.markdown("---")
-                    st.markdown("### 🔍 Level Check")
-
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.write("**GEX Levels:**")
-                        gex_flip_val = pred.get('gex_zero_level')
-                        gex_sup_val = pred.get('gex_support')
-                        gex_res_val = pred.get('gex_resistance')
-
-                        if gex_flip_val is not None:
-                            st.success(f"✅ Gamma Flip: ${gex_flip_val:.2f}")
-                        else:
-                            st.error(f"❌ Gamma Flip: None")
-
-                        if gex_sup_val is not None:
-                            st.success(f"✅ GEX Support: ${gex_sup_val:.2f}")
-                        else:
-                            st.error(f"❌ GEX Support: None")
-
-                        if gex_res_val is not None:
-                            st.success(f"✅ GEX Resistance: ${gex_res_val:.2f}")
-                        else:
-                            st.error(f"❌ GEX Resistance: None")
-
-                    with col2:
-                        st.write("**Vanna Levels:**")
-                        vanna_sup = pred.get('vanna_support_1')
-                        vanna_res = pred.get('vanna_resistance_1')
-
-                        if vanna_sup is not None:
-                            st.success(f"✅ Vanna Support: ${vanna_sup:.2f}")
-                        else:
-                            st.error(f"❌ Vanna Support: None")
-
-                        if vanna_res is not None:
-                            st.success(f"✅ Vanna Resistance: ${vanna_res:.2f}")
-                        else:
-                            st.error(f"❌ Vanna Resistance: None")
-
-                        st.write(f"**GEX Regime:** {pred.get('gex_regime', 'unknown')}")
-
                     # Intraday statistics
                     col1, col2, col3, col4 = st.columns(4)
 
@@ -1521,6 +1485,49 @@ if 'predictions' in st.session_state:
                     st.write(f"Error details: {str(e)}")
                     import traceback
                     st.code(traceback.format_exc())
+
+        # Show level status (always visible after prediction)
+        st.markdown("---")
+        st.markdown("### 🔍 Level Check")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**GEX Levels:**")
+            gex_flip_val = pred.get('gex_zero_level')
+            gex_sup_val = pred.get('gex_support')
+            gex_res_val = pred.get('gex_resistance')
+
+            if gex_flip_val is not None:
+                st.success(f"✅ Gamma Flip: ${gex_flip_val:.2f}")
+            else:
+                st.error(f"❌ Gamma Flip: None")
+
+            if gex_sup_val is not None:
+                st.success(f"✅ GEX Support: ${gex_sup_val:.2f}")
+            else:
+                st.error(f"❌ GEX Support: None")
+
+            if gex_res_val is not None:
+                st.success(f"✅ GEX Resistance: ${gex_res_val:.2f}")
+            else:
+                st.error(f"❌ GEX Resistance: None")
+
+        with col2:
+            st.write("**Vanna Levels:**")
+            vanna_sup = pred.get('vanna_support_1')
+            vanna_res = pred.get('vanna_resistance_1')
+
+            if vanna_sup is not None:
+                st.success(f"✅ Vanna Support: ${vanna_sup:.2f}")
+            else:
+                st.error(f"❌ Vanna Support: None")
+
+            if vanna_res is not None:
+                st.success(f"✅ Vanna Resistance: ${vanna_res:.2f}")
+            else:
+                st.error(f"❌ Vanna Resistance: None")
+
+            st.write(f"**GEX Regime:** {pred.get('gex_regime', 'unknown')}")
 
         # Market conditions
         col1, col2 = st.columns(2)
