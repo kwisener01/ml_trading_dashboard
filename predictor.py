@@ -356,28 +356,40 @@ class TradingPredictor:
         # GEX (Gamma Exposure) levels for hedge pressure
         try:
             from gex_calculator import GEXCalculator
+            print(f"[INFO] Attempting to calculate GEX levels for {symbol}...")
             gex_calc = GEXCalculator(self.api_token)
             gex_df, gex_levels = gex_calc.calculate_gex(symbol)
 
             if gex_levels:
+                print(f"[SUCCESS] GEX levels calculated: {list(gex_levels.keys())}")
                 predictions['gex_support'] = gex_levels.get('max_gex_strike')
                 predictions['gex_resistance'] = gex_levels.get('min_gex_strike')
                 predictions['gex_zero_level'] = gex_levels.get('zero_gex_level')
                 predictions['gex_regime'] = 'positive' if gex_levels.get('total_gex', 0) > 0 else 'negative'
                 predictions['gex_current'] = gex_levels.get('current_gex')
+                predictions['gex_error'] = None
+                print(f"  - Gamma Flip: {predictions['gex_zero_level']}")
+                print(f"  - GEX Support: {predictions['gex_support']}")
+                print(f"  - GEX Resistance: {predictions['gex_resistance']}")
             else:
+                print("[WARNING] GEX calculator returned empty results")
                 predictions['gex_support'] = None
                 predictions['gex_resistance'] = None
                 predictions['gex_zero_level'] = None
                 predictions['gex_regime'] = None
                 predictions['gex_current'] = None
+                predictions['gex_error'] = "Empty results from GEX calculator"
         except Exception as e:
-            print(f"[WARNING] Could not calculate GEX levels: {e}")
+            import traceback
+            error_msg = str(e)
+            print(f"[ERROR] GEX calculation failed: {error_msg}")
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
             predictions['gex_support'] = None
             predictions['gex_resistance'] = None
             predictions['gex_zero_level'] = None
             predictions['gex_regime'] = None
             predictions['gex_current'] = None
+            predictions['gex_error'] = error_msg
 
         # Options flow data (IV, Charm, Put/Call walls)
         try:

@@ -1365,9 +1365,21 @@ if 'predictions' in st.session_state:
                 gex_flip = pred.get('gex_zero_level')
                 gex_support = pred.get('gex_support')
                 gex_resistance = pred.get('gex_resistance')
+                gex_error = pred.get('gex_error')
 
                 if gex_flip is None and gex_support is None and gex_resistance is None:
-                    st.warning("⚠️ **GEX/Gamma levels not available** - This could be due to insufficient options data or market being closed. Vanna levels should still be visible.")
+                    if gex_error:
+                        st.warning(f"⚠️ **GEX/Gamma levels not available** - Error: {gex_error}")
+                        with st.expander("🔍 GEX Troubleshooting"):
+                            st.write("**Why GEX might fail:**")
+                            st.write("- Options chain data not available from API")
+                            st.write("- Market closed (options data only available during market hours)")
+                            st.write("- API rate limit or connection issue")
+                            st.write("- Symbol not supported for options")
+                            st.write("")
+                            st.write("**Note:** Vanna levels are calculated mathematically and don't require live options data, which is why they still work.")
+                    else:
+                        st.warning("⚠️ **GEX/Gamma levels not available** - This could be due to insufficient options data or market being closed. Vanna levels should still be visible.")
                 else:
                     st.success(f"✅ **GEX Levels Active:** Gamma Flip: ${gex_flip:.2f if gex_flip else 'N/A'} | Support: ${gex_support:.0f if gex_support else 'N/A'} | Resistance: ${gex_resistance:.0f if gex_resistance else 'N/A'}")
             else:
