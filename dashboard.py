@@ -1229,12 +1229,22 @@ if 'predictions' in st.session_state:
             fig = create_options_flow_chart(pred, price_df, symbol,
                                            in_charm_session=in_charm_session,
                                            in_priority_session=in_priority_session)
-            st.plotly_chart(fig, use_container_width=True)
+            if fig is not None:
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.error("❌ Chart function returned None")
+                st.caption("Debug info:")
+                st.write(f"- price_df empty: {price_df is None or price_df.empty if price_df is not None else 'price_df is None'}")
+                st.write(f"- symbol: {symbol}")
+                st.write(f"- pred keys: {list(pred.keys())[:10]}")
         except Exception as e:
             st.error(f"❌ Chart creation failed: {e}")
+            st.caption("Debug info:")
+            st.write(f"- Error type: {type(e).__name__}")
+            st.write(f"- price_df: {'None' if price_df is None else f'{len(price_df)} rows' if hasattr(price_df, '__len__') else 'exists'}")
             import traceback
-            st.code(traceback.format_exc())
-            st.caption("⚠️ If this persists, try refreshing the page or restarting the app")
+            with st.expander("Full Traceback"):
+                st.code(traceback.format_exc())
 
         # Chart legend with clear descriptions
         st.markdown("""
