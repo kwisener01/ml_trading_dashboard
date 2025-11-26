@@ -337,7 +337,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
         fig.add_annotation(
             text="⚡ END-OF-DAY: High Charm Pressure ⚡",
             xref="x3", yref="y3",
-            x=panel_x[len(panel_x)//2] if len(panel_x) > 1 else panel_x[0],
+            x=panel_x.iloc[len(panel_x)//2] if len(panel_x) > 1 else panel_x.iloc[0],
             y=max(abs(charm_current), 50) * 1.1,
             showarrow=False,
             font=dict(size=10, color="gold", family="Arial Black"),
@@ -373,7 +373,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
             fig.add_annotation(
                 text="🌟 NY MORNING: High GEX Impact 🌟",
                 xref="x3", yref="y3",
-                x=panel_x[len(panel_x)//2] if len(panel_x) > 1 else panel_x[0],
+                x=panel_x.iloc[len(panel_x)//2] if len(panel_x) > 1 else panel_x.iloc[0],
                 y=-80,
                 showarrow=False,
                 font=dict(size=10, color="lime", family="Arial Black"),
@@ -388,7 +388,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
         fig.add_annotation(
             text="⚠️ No Real GEX Data Available",
             xref="x3", yref="y3",
-            x=panel_x[len(panel_x)//2] if len(panel_x) > 1 else panel_x[0],
+            x=panel_x.iloc[len(panel_x)//2] if len(panel_x) > 1 else panel_x.iloc[0],
             y=0,
             showarrow=False,
             font=dict(size=12, color="orange"),
