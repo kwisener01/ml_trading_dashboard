@@ -1363,7 +1363,11 @@ if 'predictions' in st.session_state:
                             st.write("**This debug info will help diagnose the issue.**")
                             st.write("The GEX calculator is likely returning empty results without raising an exception.")
                 else:
-                    st.success(f"✅ **GEX Levels Active:** Gamma Flip: ${gex_flip:.2f if gex_flip else 'N/A'} | Support: ${gex_support:.0f if gex_support else 'N/A'} | Resistance: ${gex_resistance:.0f if gex_resistance else 'N/A'}")
+                    # Format GEX values with proper None handling
+                    flip_str = f"${gex_flip:.2f}" if gex_flip is not None else "N/A"
+                    support_str = f"${gex_support:.0f}" if gex_support is not None else "N/A"
+                    resistance_str = f"${gex_resistance:.0f}" if gex_resistance is not None else "N/A"
+                    st.success(f"✅ **GEX Levels Active:** Gamma Flip: {flip_str} | Support: {support_str} | Resistance: {resistance_str}")
             else:
                 st.error("❌ Chart function returned None")
                 st.caption("Debug info:")
