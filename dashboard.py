@@ -1,4 +1,4 @@
-# Version: 2025-11-26-fix-gex-levels
+# Version: 2025-11-26-fix-panels-visibility-v2
 import streamlit as st
 import pandas as pd
 import numpy as np
