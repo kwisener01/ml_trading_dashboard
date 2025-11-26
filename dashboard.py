@@ -1679,6 +1679,22 @@ if 'predictions' in st.session_state:
 
             st.write(f"**GEX Regime:** {pred.get('gex_regime', 'unknown')}")
 
+        # Add debug info for diagnosing GEX issues
+        st.markdown("---")
+        st.markdown("### 🔧 GEX Debug Info")
+
+        gex_error_val = pred.get('gex_error')
+        st.write(f"**Error captured:** `{repr(gex_error_val)}`")
+        st.write(f"**GEX Regime:** `{repr(pred.get('gex_regime'))}`")
+        st.write(f"**GEX Current:** `{repr(pred.get('gex_current'))}`")
+
+        if gex_error_val:
+            st.error(f"Error message: {gex_error_val}")
+        elif pred.get('gex_regime') is None:
+            st.warning("GEX regime is None - calculator returned empty results without error")
+        else:
+            st.info(f"GEX regime detected: {pred.get('gex_regime')}, but no strike levels")
+
         # Market conditions
         col1, col2 = st.columns(2)
     
