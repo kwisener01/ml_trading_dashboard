@@ -73,9 +73,29 @@ class GEXCalculator:
         if not expirations:
             raise Exception("No expirations found")
 
-        # Get the nearest expiration (0DTE or next day)
+        # Get the nearest expiration (0DTE or 1DTE prioritized)
         today = datetime.now().strftime('%Y-%m-%d')
-        nearest_exp = expirations[0]  # First expiration
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+
+        # Try to get 0DTE first (same day expiration)
+        if today in expirations:
+            nearest_exp = today
+            print(f"[GEX] Using 0DTE expiration: {nearest_exp}")
+        # Try to get 1DTE (next day expiration)
+        elif tomorrow in expirations:
+            nearest_exp = tomorrow
+            print(f"[GEX] Using 1DTE expiration: {nearest_exp}")
+        # Fall back to nearest available expiration
+        else:
+            nearest_exp = expirations[0]
+            # Calculate days to expiration
+            exp_date = datetime.strptime(nearest_exp, '%Y-%m-%d')
+            dte = (exp_date - datetime.now()).days
+            print(f"[GEX] Using {dte}DTE expiration: {nearest_exp} (0DTE/1DTE not available)")
+
+            # Warn if using >2DTE (less impactful for daily movement)
+            if dte > 2:
+                print(f"[WARNING] Using {dte}DTE options - may not capture daily dealer flows accurately")
 
         # Get options chain for nearest expiration
         chain_url = f"{self.base_url}/markets/options/chains"
