@@ -20,6 +20,7 @@ class TradingPredictor:
     
     def __init__(self, api_token, model_prefix='spy_trading_model', model_timestamp=None):
         """Initialize with API token and load models"""
+        self.api_token = api_token  # Store API token for GEX calculator
         self.collector = TradierDataCollector(api_token)
         self.models = {}
         self.load_models(model_prefix, model_timestamp)
@@ -200,7 +201,8 @@ class TradingPredictor:
             # These act as magnets/barriers
             try:
                 # Try to get options chain data
-                response = self.collector.session.get(
+                import requests
+                response = requests.get(
                     f'{self.collector.base_url}/markets/options/chains',
                     params={'symbol': symbol, 'expiration': None},
                     headers={'Authorization': f'Bearer {self.collector.api_token}',
