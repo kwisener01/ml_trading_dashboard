@@ -270,6 +270,7 @@ class TradingPredictor:
 
         # GEX (Gamma Exposure) levels for hedge pressure
         try:
+            print("[DEBUG] Attempting to calculate GEX levels...")
             from gex_calculator import GEXCalculator
             gex_calc = GEXCalculator(self.api_token)
             gex_df, gex_levels = gex_calc.calculate_gex(symbol)
@@ -280,14 +281,18 @@ class TradingPredictor:
                 predictions['gex_zero_level'] = gex_levels.get('zero_gex_level')
                 predictions['gex_regime'] = 'positive' if gex_levels.get('total_gex', 0) > 0 else 'negative'
                 predictions['gex_current'] = gex_levels.get('current_gex')
+                print(f"[OK] GEX calculated - Support: ${predictions['gex_support']:.2f}, Resistance: ${predictions['gex_resistance']:.2f}, Flip: ${predictions['gex_zero_level']:.2f if predictions['gex_zero_level'] else 0:.2f}")
             else:
+                print("[WARNING] GEX calculation returned empty results")
                 predictions['gex_support'] = None
                 predictions['gex_resistance'] = None
                 predictions['gex_zero_level'] = None
                 predictions['gex_regime'] = None
                 predictions['gex_current'] = None
         except Exception as e:
-            print(f"[WARNING] Could not calculate GEX levels: {e}")
+            import traceback
+            print(f"[ERROR] Could not calculate GEX levels: {e}")
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
             predictions['gex_support'] = None
             predictions['gex_resistance'] = None
             predictions['gex_zero_level'] = None

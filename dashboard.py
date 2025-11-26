@@ -541,6 +541,41 @@ if 'predictions' in st.session_state:
             for factor in pressure_factors[:4]:
                 st.caption(f"• {factor}")
 
+        # Display GEX Levels explicitly
+        st.markdown("---")
+        st.subheader("🎲 Gamma Exposure (GEX) Levels")
+
+        gex_col1, gex_col2, gex_col3, gex_col4 = st.columns(4)
+
+        with gex_col1:
+            if gex_support is not None:
+                st.metric("GEX Support", f"${gex_support:.2f}", help="Dealers will BUY here (hedge delta)")
+            else:
+                st.metric("GEX Support", "N/A", help="No data available")
+
+        with gex_col2:
+            if gex_resistance is not None:
+                st.metric("GEX Resistance", f"${gex_resistance:.2f}", help="Dealers will SELL here (hedge delta)")
+            else:
+                st.metric("GEX Resistance", "N/A", help="No data available")
+
+        with gex_col3:
+            if gex_flip is not None:
+                st.metric("GEX Flip Level", f"${gex_flip:.2f}", help="Zero GEX - hedging pressure flips here")
+            else:
+                st.metric("GEX Flip Level", "N/A", help="No data available")
+
+        with gex_col4:
+            gex_current = pred.get('gex_current')
+            if gex_current is not None:
+                st.metric("Current GEX", f"{gex_current:,.0f}", help="Current gamma exposure at spot price")
+            else:
+                st.metric("Current GEX", "N/A", help="No data available")
+
+        # Show warning if GEX data is missing
+        if all(v is None for v in [gex_support, gex_resistance, gex_flip]):
+            st.warning("⚠️ **GEX data unavailable** - Options chain may not be accessible or your API token may not have options data access. Check Streamlit logs for errors.")
+
         st.markdown("---")
 
         # Price chart with targets and Vanna levels
