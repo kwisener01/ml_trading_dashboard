@@ -133,8 +133,18 @@ class GEXCalculator:
             raise Exception(f"Failed to get chain (HTTP {response.status_code}): {response.text}")
 
         chain_data = response.json()
-        options = chain_data.get('options', {}).get('option', [])
-        print(f"[GEX] Received {len(options) if options else 0} options from chain")
+        options_data = chain_data.get('options', {}).get('option', [])
+
+        # Handle case where API returns single option as dict instead of list
+        if isinstance(options_data, dict):
+            options = [options_data]
+            print(f"[GEX] Received 1 option from chain (converted dict to list)")
+        elif isinstance(options_data, list):
+            options = options_data
+            print(f"[GEX] Received {len(options)} options from chain")
+        else:
+            options = []
+            print(f"[GEX] Unexpected options data type: {type(options_data)}")
 
         if not options:
             raise Exception(f"No options data in chain for expiration {nearest_exp}")

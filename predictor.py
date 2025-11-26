@@ -341,7 +341,9 @@ class TradingPredictor:
             gex_calc = GEXCalculator(self.api_token)
             gex_df, gex_levels = gex_calc.calculate_gex(symbol)
 
-            if gex_levels:
+            print(f"[DEBUG] GEX calculation returned: gex_df={type(gex_df)}, gex_levels={type(gex_levels)} with {len(gex_levels) if gex_levels else 0} keys")
+
+            if gex_levels is not None and len(gex_levels) > 0:
                 print(f"[SUCCESS] GEX/Vanna levels calculated: {list(gex_levels.keys())}")
 
                 # GEX levels
@@ -368,13 +370,13 @@ class TradingPredictor:
                 print(f"  - Vanna Support 1: {predictions['vanna_support_1']}")
                 print(f"  - Vanna Resistance 1: {predictions['vanna_resistance_1']}")
             else:
-                print("[WARNING] GEX calculator returned empty results")
+                print(f"[WARNING] GEX calculator returned empty/invalid results: gex_levels={gex_levels}")
                 predictions['gex_support'] = None
                 predictions['gex_resistance'] = None
                 predictions['gex_zero_level'] = None
                 predictions['gex_regime'] = None
                 predictions['gex_current'] = None
-                predictions['gex_error'] = "Empty results from GEX calculator"
+                predictions['gex_error'] = f"Empty results from GEX calculator (returned {len(gex_levels) if gex_levels else 0} keys)"
         except Exception as e:
             import traceback
             error_msg = str(e)
