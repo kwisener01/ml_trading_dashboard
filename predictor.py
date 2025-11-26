@@ -20,6 +20,7 @@ class TradingPredictor:
     
     def __init__(self, api_token, model_prefix='spy_trading_model', model_timestamp=None):
         """Initialize with API token and load models"""
+        self.api_token = api_token  # Store API token for GEX calculator
         self.collector = TradierDataCollector(api_token)
         self.models = {}
         self.load_models(model_prefix, model_timestamp)
@@ -132,7 +133,7 @@ class TradingPredictor:
         fe.add_support_resistance_levels()
         fe.add_market_regime_features()
         fe.add_time_features()
-        # Note: Vanna levels calculated separately after ML predictions
+        # Note: Vanna levels now come from real options chain via GEX calculator (0DTE/1DTE)
 
         # Get feature set (without creating labels since we're predicting)
         features, full_data = fe.get_features_for_ml()
@@ -200,7 +201,8 @@ class TradingPredictor:
             # These act as magnets/barriers
             try:
                 # Try to get options chain data
-                response = self.collector.session.get(
+                import requests
+                response = requests.get(
                     f'{self.collector.base_url}/markets/options/chains',
                     params={'symbol': symbol, 'expiration': None},
                     headers={'Authorization': f'Bearer {self.collector.api_token}',
@@ -253,13 +255,12 @@ class TradingPredictor:
         # Prepare features for ML models
         features, full_data = self.prepare_features(df)
 
-        # Calculate Vanna levels separately (not used for ML)
-        df_with_vanna = self.calculate_vanna_levels(df)
+        # Vanna levels now come from real options chain via GEX calculator (below)
+        # OLD estimated Vanna calculation removed - using real 0DTE/1DTE data instead
 
         # Use only the latest data point for prediction
         latest_features = features.iloc[-1:].copy()
         latest_full = full_data.iloc[-1:].copy()
-        latest_vanna = df_with_vanna.iloc[-1:]
         
         # Handle NaN and inf values
         latest_features = latest_features.replace([np.inf, -np.inf], np.nan)
@@ -324,60 +325,71 @@ class TradingPredictor:
         predictions['volatility_rank'] = latest_full['volatility_rank'].iloc[0] if 'volatility_rank' in latest_full else None
         predictions['optimal_hours'] = bool(latest_full['optimal_hours'].iloc[0]) if 'optimal_hours' in latest_full else None
 
-        # Vanna levels (support and resistance with strength values)
-        if 'vanna_resistance_1' in latest_vanna.columns:
-            predictions['vanna_resistance_1'] = latest_vanna['vanna_resistance_1'].iloc[0]
-            predictions['vanna_resistance_1_strength'] = latest_vanna.get('vanna_resistance_1_strength', pd.Series([None])).iloc[0]
-        else:
-            predictions['vanna_resistance_1'] = None
-            predictions['vanna_resistance_1_strength'] = None
-
-        if 'vanna_resistance_2' in latest_vanna.columns:
-            predictions['vanna_resistance_2'] = latest_vanna['vanna_resistance_2'].iloc[0]
-            predictions['vanna_resistance_2_strength'] = latest_vanna.get('vanna_resistance_2_strength', pd.Series([None])).iloc[0]
-        else:
-            predictions['vanna_resistance_2'] = None
-            predictions['vanna_resistance_2_strength'] = None
-
-        if 'vanna_support_1' in latest_vanna.columns:
-            predictions['vanna_support_1'] = latest_vanna['vanna_support_1'].iloc[0]
-            predictions['vanna_support_1_strength'] = latest_vanna.get('vanna_support_1_strength', pd.Series([None])).iloc[0]
-        else:
-            predictions['vanna_support_1'] = None
-            predictions['vanna_support_1_strength'] = None
-
-        if 'vanna_support_2' in latest_vanna.columns:
-            predictions['vanna_support_2'] = latest_vanna['vanna_support_2'].iloc[0]
-            predictions['vanna_support_2_strength'] = latest_vanna.get('vanna_support_2_strength', pd.Series([None])).iloc[0]
-        else:
-            predictions['vanna_support_2'] = None
-            predictions['vanna_support_2_strength'] = None
+        # Vanna levels now calculated from real options chain below (in GEX calculator section)
+        # Initialize as None - will be populated from GEX calculator if successful
+        predictions['vanna_support_1'] = None
+        predictions['vanna_support_1_strength'] = None
+        predictions['vanna_support_2'] = None
+        predictions['vanna_support_2_strength'] = None
+        predictions['vanna_resistance_1'] = None
+        predictions['vanna_resistance_1_strength'] = None
+        predictions['vanna_resistance_2'] = None
+        predictions['vanna_resistance_2_strength'] = None
 
         # GEX (Gamma Exposure) levels for hedge pressure
         try:
             from gex_calculator import GEXCalculator
+            print(f"[INFO] Attempting to calculate GEX levels for {symbol}...")
             gex_calc = GEXCalculator(self.api_token)
             gex_df, gex_levels = gex_calc.calculate_gex(symbol)
 
-            if gex_levels:
+            print(f"[DEBUG] GEX calculation returned: gex_df={type(gex_df)}, gex_levels={type(gex_levels)} with {len(gex_levels) if gex_levels else 0} keys")
+
+            if gex_levels is not None and len(gex_levels) > 0:
+                print(f"[SUCCESS] GEX/Vanna levels calculated: {list(gex_levels.keys())}")
+
+                # GEX levels
                 predictions['gex_support'] = gex_levels.get('max_gex_strike')
                 predictions['gex_resistance'] = gex_levels.get('min_gex_strike')
                 predictions['gex_zero_level'] = gex_levels.get('zero_gex_level')
                 predictions['gex_regime'] = 'positive' if gex_levels.get('total_gex', 0) > 0 else 'negative'
                 predictions['gex_current'] = gex_levels.get('current_gex')
+                predictions['gex_error'] = None
+
+                # REAL Vanna levels from options chain (0DTE/1DTE)
+                predictions['vanna_support_1'] = gex_levels.get('vanna_support_1')
+                predictions['vanna_support_1_strength'] = gex_levels.get('vanna_support_1_strength')
+                predictions['vanna_support_2'] = gex_levels.get('vanna_support_2')
+                predictions['vanna_support_2_strength'] = gex_levels.get('vanna_support_2_strength')
+                predictions['vanna_resistance_1'] = gex_levels.get('vanna_resistance_1')
+                predictions['vanna_resistance_1_strength'] = gex_levels.get('vanna_resistance_1_strength')
+                predictions['vanna_resistance_2'] = gex_levels.get('vanna_resistance_2')
+                predictions['vanna_resistance_2_strength'] = gex_levels.get('vanna_resistance_2_strength')
+
+                print(f"  - Gamma Flip: {predictions['gex_zero_level']}")
+                print(f"  - GEX Support: {predictions['gex_support']}")
+                print(f"  - GEX Resistance: {predictions['gex_resistance']}")
+                print(f"  - Vanna Support 1: {predictions['vanna_support_1']}")
+                print(f"  - Vanna Resistance 1: {predictions['vanna_resistance_1']}")
             else:
+                print(f"[WARNING] GEX calculator returned empty/invalid results: gex_levels={gex_levels}")
                 predictions['gex_support'] = None
                 predictions['gex_resistance'] = None
                 predictions['gex_zero_level'] = None
                 predictions['gex_regime'] = None
                 predictions['gex_current'] = None
+                predictions['gex_error'] = f"Empty results from GEX calculator (returned {len(gex_levels) if gex_levels else 0} keys)"
         except Exception as e:
-            print(f"[WARNING] Could not calculate GEX levels: {e}")
+            import traceback
+            error_msg = str(e)
+            print(f"[ERROR] GEX calculation failed: {error_msg}")
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
             predictions['gex_support'] = None
             predictions['gex_resistance'] = None
             predictions['gex_zero_level'] = None
             predictions['gex_regime'] = None
             predictions['gex_current'] = None
+            predictions['gex_error'] = error_msg
 
         # Options flow data (IV, Charm, Put/Call walls)
         try:

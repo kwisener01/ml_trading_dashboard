@@ -262,130 +262,83 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
     )
 
     # ========== PANEL 2: IV & VANNA ==========
+    # Show REAL current values only (no simulated historical lines)
 
-    # Create x-axis and historical values for panels 2 and 3
+    # Get current real values
+    iv_current = pred.get('iv', 0.2) * 100
+    vanna_s1_str = pred.get('vanna_support_1_strength', 0) or 0
+    vanna_r1_str = pred.get('vanna_resistance_1_strength', 0) or 0
+    net_vanna_current = (vanna_s1_str + vanna_r1_str) * 100
+    vanna_iv_current = pred.get('vanna_iv_trend', 0)
+
+    # Use price data x-axis if available, otherwise use current time
     if has_price_data and len(price_df) > 1:
         panel_x = price_df.index if 'time' not in price_df.columns else price_df['time']
-        n_points = len(panel_x)
-
-        # Generate simulated historical IV values (trending toward current)
-        iv_current = pred.get('iv', 0.2) * 100
-        iv_start = iv_current + np.random.uniform(-5, 5)
-        iv_values = np.linspace(iv_start, iv_current, n_points) + np.random.normal(0, 1, n_points)
-
-        # Generate simulated Vanna values
-        vanna_s1_str = pred.get('vanna_support_1_strength', 0) or 0
-        vanna_r1_str = pred.get('vanna_resistance_1_strength', 0) or 0
-        net_vanna_current = vanna_s1_str + vanna_r1_str
-        net_vanna_start = net_vanna_current + np.random.uniform(-0.2, 0.2)
-        vanna_values = np.linspace(net_vanna_start, net_vanna_current, n_points) * 100
-
-        # Generate simulated Vanna×IV
-        vanna_iv_current = pred.get('vanna_iv_trend', 0)
-        vanna_iv_start = vanna_iv_current + np.random.uniform(-3, 3)
-        vanna_iv_values = np.linspace(vanna_iv_start, vanna_iv_current, n_points)
     else:
-        # Fallback to single point
         panel_x = [datetime.now(EST)]
-        iv_values = [pred.get('iv', 0.2) * 100]
-        vanna_s1_str = pred.get('vanna_support_1_strength', 0) or 0
-        vanna_r1_str = pred.get('vanna_resistance_1_strength', 0) or 0
-        vanna_values = [(vanna_s1_str + vanna_r1_str) * 100]
-        vanna_iv_values = [pred.get('vanna_iv_trend', 0)]
 
-    # IV (Implied Volatility) - as line
-    fig.add_trace(go.Scatter(
-        x=panel_x,
-        y=iv_values,
-        mode='lines',
-        name='IV %',
-        line=dict(color='#FF6B6B', width=2),
-        showlegend=True
-    ), row=2, col=1)
+    # Add horizontal reference lines for current values
+    # IV as horizontal line spanning the chart
+    fig.add_hline(
+        y=iv_current,
+        line=dict(color='#FF6B6B', width=2, dash='solid'),
+        annotation_text=f"IV: {iv_current:.1f}%",
+        annotation_position="right",
+        annotation=dict(font=dict(size=10, color="white"), bgcolor="#FF6B6B"),
+        row=2, col=1
+    )
 
-    # Vanna (dealer bias) - as line
-    fig.add_trace(go.Scatter(
-        x=panel_x,
-        y=vanna_values,
-        mode='lines',
-        name='Net Vanna',
-        line=dict(color='#4ECDC4', width=2),
-        fill='tozeroy',
-        fillcolor='rgba(78, 205, 196, 0.2)',
-        showlegend=True
-    ), row=2, col=1)
+    # Net Vanna as horizontal line
+    fig.add_hline(
+        y=net_vanna_current,
+        line=dict(color='#4ECDC4', width=2, dash='solid'),
+        annotation_text=f"Net Vanna: {net_vanna_current:.1f}",
+        annotation_position="right",
+        annotation=dict(font=dict(size=10, color="white"), bgcolor="#4ECDC4"),
+        row=2, col=1
+    )
 
-    # Vanna × IV (trend indication) - as line
-    fig.add_trace(go.Scatter(
-        x=panel_x,
-        y=vanna_iv_values,
-        mode='lines',
-        name='Vanna×IV',
+    # Vanna×IV as horizontal line
+    fig.add_hline(
+        y=vanna_iv_current,
         line=dict(color='#95E1D3', width=2, dash='dot'),
-        showlegend=True
-    ), row=2, col=1)
+        annotation_text=f"Vanna×IV: {vanna_iv_current:.1f}",
+        annotation_position="right",
+        annotation=dict(font=dict(size=10, color="white"), bgcolor="#95E1D3"),
+        row=2, col=1
+    )
 
     # ========== PANEL 3: DEALER FLOW ==========
+    # Show REAL current values only (no simulated data)
 
-    # Generate historical values for Panel 3
-    if has_price_data and len(price_df) > 1:
-        # Charm pressure values
-        charm_current = pred.get('charm_pressure', 0)
-        charm_start = charm_current + np.random.uniform(-10, 10)
-        charm_values = np.linspace(charm_start, charm_current, n_points)
-
-        # GEX Pressure values
-        gex_pressure_current = 50 if gex_regime == 'positive' else -50 if gex_regime == 'negative' else 0
-        gex_start = gex_pressure_current + np.random.uniform(-20, 20)
-        gex_pressure_values = np.linspace(gex_start, gex_pressure_current, n_points)
-
-        # Dealer Flow Score
-        dealer_score_current = pred.get('dealer_flow_score', 0)
-        dealer_start = dealer_score_current + np.random.uniform(-15, 15)
-        dealer_flow_values = np.linspace(dealer_start, dealer_score_current, n_points)
-    else:
-        charm_values = [pred.get('charm_pressure', 0)]
-        gex_pressure_current = 50 if gex_regime == 'positive' else -50 if gex_regime == 'negative' else 0
-        gex_pressure_values = [gex_pressure_current]
-        dealer_flow_values = [pred.get('dealer_flow_score', 0)]
-
-    # Charm (time decay flows) - as filled area
-    # Color based on bullish (green) vs bearish (red) pressure
+    # Get real current values
     charm_current = pred.get('charm_pressure', 0)
+    dealer_score_current = pred.get('dealer_flow_score', 0)
     is_charm_bullish = charm_current > 0
 
-    # Base colors: green for bullish, red for bearish
-    if is_charm_bullish:
-        charm_color = '#4CAF50'  # Green for bullish
-        charm_fill = 'rgba(76, 175, 80, 0.3)'
-    else:
-        charm_color = '#F44336'  # Red for bearish
-        charm_fill = 'rgba(244, 67, 54, 0.3)'
-
-    # Add extra emphasis during charm session (3-4PM)
-    charm_label = 'Charm Pressure'
+    # Charm (REAL value from Black-Scholes calculation)
+    charm_color = '#4CAF50' if is_charm_bullish else '#F44336'
+    charm_label = 'Charm Pressure (REAL)'
     if in_charm_session:
         charm_label += ' ⚡ (EOD ACTIVE)'
-        charm_color = '#FFD700' if is_charm_bullish else '#FF6B00'  # Gold/Orange during session
+        charm_color = '#FFD700' if is_charm_bullish else '#FF6B00'
 
-    fig.add_trace(go.Scatter(
-        x=panel_x,
-        y=charm_values,
-        mode='lines',
-        name=charm_label,
-        line=dict(color=charm_color, width=3 if in_charm_session else 2),
-        fill='tozeroy',
-        fillcolor=charm_fill,
-        showlegend=True
-    ), row=3, col=1)
+    fig.add_hline(
+        y=charm_current,
+        line=dict(color=charm_color, width=3 if in_charm_session else 2, dash='solid'),
+        annotation_text=f"{charm_label}: {charm_current:.1f}",
+        annotation_position="right",
+        annotation=dict(font=dict(size=10, color="white"), bgcolor=charm_color),
+        row=3, col=1
+    )
 
     # Add charm session indicator if active
     if in_charm_session:
         fig.add_annotation(
             text="⚡ END-OF-DAY: High Charm Pressure ⚡",
             xref="x3", yref="y3",
-            x=panel_x[len(panel_x)//2] if len(panel_x) > 1 else panel_x[0],
-            y=max(abs(charm_values[-1]), 50) * 1.1,
+            x=panel_x.iloc[len(panel_x)//2] if len(panel_x) > 1 else panel_x.iloc[0],
+            y=max(abs(charm_current), 50) * 1.1,
             showarrow=False,
             font=dict(size=10, color="gold", family="Arial Black"),
             bgcolor="rgba(30, 30, 30, 0.8)",
@@ -395,50 +348,66 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
             row=3, col=1
         )
 
-    # GEX Pressure (reaction strength) - as line
-    # Add extra emphasis during NY morning priority session (10AM-12PM)
-    gex_label = 'GEX Pressure'
-    gex_width = 2
-    if in_priority_session:
-        gex_label += ' 🌟 (NY MORNING)'
-        gex_width = 4  # Thicker during priority session
+    # GEX Pressure - ONLY show if we have real GEX data
+    has_real_gex = gex_flip is not None or gex_support is not None or gex_resistance is not None
+    if has_real_gex and gex_regime:
+        # Calculate real GEX pressure based on actual regime
+        gex_pressure_current = 50 if gex_regime == 'positive' else -50 if gex_regime == 'negative' else 0
+        gex_label = 'GEX Pressure (REAL)'
+        gex_width = 2
+        if in_priority_session:
+            gex_label += ' 🌟 (NY MORNING)'
+            gex_width = 4
 
-    fig.add_trace(go.Scatter(
-        x=panel_x,
-        y=gex_pressure_values,
-        mode='lines',
-        name=gex_label,
-        line=dict(color='#4CAF50' if gex_pressure_current > 0 else '#F44336', width=gex_width),
-        showlegend=True
-    ), row=3, col=1)
+        fig.add_hline(
+            y=gex_pressure_current,
+            line=dict(color='#4CAF50' if gex_pressure_current > 0 else '#F44336', width=gex_width, dash='solid'),
+            annotation_text=f"{gex_label}: {gex_pressure_current:.0f}",
+            annotation_position="left",
+            annotation=dict(font=dict(size=10, color="white"), bgcolor='#4CAF50' if gex_pressure_current > 0 else '#F44336'),
+            row=3, col=1
+        )
 
-    # Add priority session indicator for GEX if active
-    if in_priority_session:
+        # Add priority session indicator for GEX if active
+        if in_priority_session:
+            fig.add_annotation(
+                text="🌟 NY MORNING: High GEX Impact 🌟",
+                xref="x3", yref="y3",
+                x=panel_x.iloc[len(panel_x)//2] if len(panel_x) > 1 else panel_x.iloc[0],
+                y=-80,
+                showarrow=False,
+                font=dict(size=10, color="lime", family="Arial Black"),
+                bgcolor="rgba(30, 30, 30, 0.8)",
+                bordercolor="lime",
+                borderwidth=1,
+                borderpad=4,
+                row=3, col=1
+            )
+    else:
+        # Show "No GEX Data" message in Panel 3
         fig.add_annotation(
-            text="🌟 NY MORNING: High GEX Impact 🌟",
+            text="⚠️ No Real GEX Data Available",
             xref="x3", yref="y3",
-            x=panel_x[len(panel_x)//2] if len(panel_x) > 1 else panel_x[0],
-            y=-80,  # Position near bottom
+            x=panel_x.iloc[len(panel_x)//2] if len(panel_x) > 1 else panel_x.iloc[0],
+            y=0,
             showarrow=False,
-            font=dict(size=10, color="lime", family="Arial Black"),
+            font=dict(size=12, color="orange"),
             bgcolor="rgba(30, 30, 30, 0.8)",
-            bordercolor="lime",
+            bordercolor="orange",
             borderwidth=1,
             borderpad=4,
             row=3, col=1
         )
 
-    # Dealer Flow Score - as line with markers
-    dealer_score = pred.get('dealer_flow_score', 0)
-    fig.add_trace(go.Scatter(
-        x=panel_x,
-        y=dealer_flow_values,
-        mode='lines+markers',
-        name='Dealer Flow Score',
-        line=dict(color='#FFC107', width=3),
-        marker=dict(size=6, color='#6BCF7F' if dealer_score > 0 else '#F76B8A'),
-        showlegend=True
-    ), row=3, col=1)
+    # Dealer Flow Score (REAL value - combination of all flows)
+    fig.add_hline(
+        y=dealer_score_current,
+        line=dict(color='#FFC107', width=3, dash='solid'),
+        annotation_text=f"Dealer Flow: {dealer_score_current:.0f}",
+        annotation_position="right",
+        annotation=dict(font=dict(size=10, color="white"), bgcolor='#FFC107'),
+        row=3, col=1
+    )
 
     # Add zero reference line
     fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1, opacity=0.5, row=3, col=1)
@@ -1365,9 +1334,34 @@ if 'predictions' in st.session_state:
                 gex_flip = pred.get('gex_zero_level')
                 gex_support = pred.get('gex_support')
                 gex_resistance = pred.get('gex_resistance')
+                gex_error = pred.get('gex_error')
 
                 if gex_flip is None and gex_support is None and gex_resistance is None:
-                    st.warning("⚠️ **GEX/Gamma levels not available** - This could be due to insufficient options data or market being closed. Vanna levels should still be visible.")
+                    if gex_error:
+                        st.warning(f"⚠️ **GEX/Gamma levels not available** - Error: {gex_error}")
+                        with st.expander("🔍 GEX Troubleshooting"):
+                            st.write("**Why GEX might fail:**")
+                            st.write("- Options chain data not available from API")
+                            st.write("- Market closed (options data only available during market hours)")
+                            st.write("- API rate limit or connection issue")
+                            st.write("- Symbol not supported for options")
+                            st.write("")
+                            st.write("**Note:** Vanna levels are calculated mathematically and don't require live options data, which is why they still work.")
+                    else:
+                        st.warning("⚠️ **GEX/Gamma levels not available** - This could be due to insufficient options data or market being closed. Vanna levels should still be visible.")
+
+                        # Debug info
+                        with st.expander("🔧 Debug Info"):
+                            st.write(f"**gex_error value:** `{repr(gex_error)}`")
+                            st.write(f"**All GEX-related values:**")
+                            st.write(f"- gex_flip: {gex_flip}")
+                            st.write(f"- gex_support: {gex_support}")
+                            st.write(f"- gex_resistance: {gex_resistance}")
+                            st.write(f"- gex_regime: {pred.get('gex_regime')}")
+                            st.write(f"- gex_current: {pred.get('gex_current')}")
+                            st.write("")
+                            st.write("**This debug info will help diagnose the issue.**")
+                            st.write("The GEX calculator is likely returning empty results without raising an exception.")
                 else:
                     st.success(f"✅ **GEX Levels Active:** Gamma Flip: ${gex_flip:.2f if gex_flip else 'N/A'} | Support: ${gex_support:.0f if gex_support else 'N/A'} | Resistance: ${gex_resistance:.0f if gex_resistance else 'N/A'}")
             else:
@@ -1684,6 +1678,22 @@ if 'predictions' in st.session_state:
                 st.error(f"❌ Vanna Resistance: None")
 
             st.write(f"**GEX Regime:** {pred.get('gex_regime', 'unknown')}")
+
+        # Add debug info for diagnosing GEX issues
+        st.markdown("---")
+        st.markdown("### 🔧 GEX Debug Info")
+
+        gex_error_val = pred.get('gex_error')
+        st.write(f"**Error captured:** `{repr(gex_error_val)}`")
+        st.write(f"**GEX Regime:** `{repr(pred.get('gex_regime'))}`")
+        st.write(f"**GEX Current:** `{repr(pred.get('gex_current'))}`")
+
+        if gex_error_val:
+            st.error(f"Error message: {gex_error_val}")
+        elif pred.get('gex_regime') is None:
+            st.warning("GEX regime is None - calculator returned empty results without error")
+        else:
+            st.info(f"GEX regime detected: {pred.get('gex_regime')}, but no strike levels")
 
         # Market conditions
         col1, col2 = st.columns(2)
