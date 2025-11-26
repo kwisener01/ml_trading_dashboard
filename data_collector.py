@@ -78,17 +78,48 @@ class TradierDataCollector:
             'end': end_time,
             'session_filter': 'all'
         }
-        
+
         response = requests.get(url, headers=self.headers, params=params)
-        
+
         if response.status_code == 200:
             data = response.json()
             if 'series' in data and data['series'] and 'data' in data['series']:
-                df = pd.DataFrame(data['series']['data'])
-                df['time'] = pd.to_datetime(df['time'])
-                return df
-        
+                series_data = data['series']['data']
+
+                # Handle case where data is a dict with scalar values or empty
+                if isinstance(series_data, dict):
+                    # If it's a dict, check if it has list values (proper data)
+                    if series_data and any(isinstance(v, list) for v in series_data.values()):
+                        df = pd.DataFrame(series_data)
+                    elif series_data:
+                        # Single record returned as dict with scalar values
+                        df = pd.DataFrame([series_data])
+                    else:
+                        print(f"Warning: Empty data dict returned for {symbol}")
+                        return pd.DataFrame()
+                elif isinstance(series_data, list):
+                    # Normal case: list of records
+                    if series_data:
+                        df = pd.DataFrame(series_data)
+                    else:
+                        print(f"Warning: Empty data list returned for {symbol}")
+                        return pd.DataFrame()
+                else:
+                    print(f"Warning: Unexpected data type: {type(series_data)}")
+                    return pd.DataFrame()
+
+                # Ensure time column exists before converting
+                if 'time' in df.columns:
+                    df['time'] = pd.to_datetime(df['time'])
+                    return df
+                else:
+                    print(f"Warning: 'time' column missing in response for {symbol}")
+                    print(f"Available columns: {df.columns.tolist()}")
+                    return pd.DataFrame()
+
         print(f"Error getting intraday data: {response.status_code}")
+        if response.status_code != 200:
+            print(f"Response: {response.text}")
         return pd.DataFrame()
     
     def get_realtime_quote(self, symbols):
