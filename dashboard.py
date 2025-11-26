@@ -576,6 +576,75 @@ if 'predictions' in st.session_state:
         if all(v is None for v in [gex_support, gex_resistance, gex_flip]):
             st.warning("⚠️ **GEX data unavailable** - Options chain may not be accessible or your API token may not have options data access. Check Streamlit logs for errors.")
 
+        # Sample Option Greeks Display (Diagnostic)
+        st.markdown("---")
+        st.subheader("🔍 Sample Option Greeks (Diagnostic)")
+
+        try:
+            from data_collector import TradierDataCollector
+            import requests
+
+            collector = TradierDataCollector(api_token)
+
+            # Get nearest expiration
+            exp_url = f"{collector.base_url}/markets/options/expirations"
+            response = requests.get(exp_url, headers=collector.headers, params={'symbol': symbol})
+
+            if response.status_code == 200:
+                expirations = response.json().get('expirations', {}).get('date', [])
+
+                if expirations:
+                    nearest_exp = expirations[0]
+
+                    # Get options chain with Greeks
+                    chain_df = collector.get_option_chain_with_greeks(symbol, nearest_exp)
+
+                    if not chain_df.empty:
+                        # Find ATM call option (closest to current price)
+                        calls = chain_df[chain_df['option_type'] == 'call'].copy()
+                        if not calls.empty:
+                            calls['distance'] = abs(calls['strike'] - current)
+                            atm_call = calls.loc[calls['distance'].idxmin()]
+
+                            st.success(f"✅ **Options data available!** Showing ATM Call for {nearest_exp}")
+
+                            # Display strike and Greeks in columns
+                            g1, g2, g3, g4, g5, g6 = st.columns(6)
+
+                            with g1:
+                                st.metric("Strike", f"${atm_call['strike']:.2f}")
+                            with g2:
+                                delta_val = atm_call.get('delta', 'N/A')
+                                st.metric("Delta", f"{delta_val:.4f}" if isinstance(delta_val, (int, float)) else delta_val)
+                            with g3:
+                                gamma_val = atm_call.get('gamma', 'N/A')
+                                st.metric("Gamma", f"{gamma_val:.4f}" if isinstance(gamma_val, (int, float)) else gamma_val)
+                            with g4:
+                                theta_val = atm_call.get('theta', 'N/A')
+                                st.metric("Theta", f"{theta_val:.4f}" if isinstance(theta_val, (int, float)) else theta_val)
+                            with g5:
+                                vega_val = atm_call.get('vega', 'N/A')
+                                st.metric("Vega", f"{vega_val:.4f}" if isinstance(vega_val, (int, float)) else vega_val)
+                            with g6:
+                                iv_val = atm_call.get('mid_iv', 'N/A')
+                                st.metric("IV", f"{iv_val:.1%}" if isinstance(iv_val, (int, float)) else iv_val)
+
+                            # Additional details
+                            st.caption(f"📊 Last: ${atm_call.get('last', 'N/A'):.2f} | Bid: ${atm_call.get('bid', 'N/A'):.2f} | Ask: ${atm_call.get('ask', 'N/A'):.2f} | OI: {atm_call.get('open_interest', 'N/A'):,.0f}")
+                        else:
+                            st.warning("⚠️ No call options found in chain")
+                    else:
+                        st.error("❌ Options chain returned empty - Greeks not available")
+                else:
+                    st.error("❌ No expirations found for this symbol")
+            else:
+                st.error(f"❌ Failed to get expirations: {response.status_code}")
+
+        except Exception as e:
+            st.error(f"❌ Error fetching options data: {str(e)}")
+            import traceback
+            st.caption(f"Details: {traceback.format_exc()}")
+
         st.markdown("---")
 
         # Price chart with targets and Vanna levels
