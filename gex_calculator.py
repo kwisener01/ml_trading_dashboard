@@ -56,6 +56,25 @@ class GEXCalculator:
 
         return gamma
 
+    def calculate_vanna(self, S, K, T, r, sigma, option_type='call'):
+        """
+        Calculate option vanna using Black-Scholes.
+
+        Vanna = ∂²V/∂S∂σ = ∂Delta/∂σ (delta sensitivity to IV)
+
+        Formula: Vanna = -phi(d1) * d2 / sigma
+        where d2 = d1 - sigma*sqrt(T)
+        """
+        if T <= 0 or sigma <= 0:
+            return 0.0
+
+        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+
+        vanna = -norm.pdf(d1) * d2 / sigma
+
+        return vanna
+
     def get_options_chain(self, symbol='SPY'):
         """Fetch options chain from Tradier."""
         import requests
@@ -115,17 +134,21 @@ class GEXCalculator:
 
     def calculate_gex(self, symbol='SPY', use_api_greeks=True):
         """
-        Calculate GEX (Gamma Exposure) for all strikes.
+        Calculate GEX (Gamma Exposure) and Vanna Exposure for all strikes.
 
-        Returns DataFrame with GEX per strike and key levels.
+        Returns DataFrame with GEX/Vanna per strike and key levels.
 
         GEX Formula:
         GEX = Gamma * Open Interest * 100 * Spot Price
+
+        Vanna Exposure Formula:
+        Vanna Exposure = Vanna * Open Interest * 100 * Spot Price
 
         Dealer assumption:
         - Dealers are typically short calls (sell to retail)
         - Dealers are typically short puts (sell to retail)
         - Therefore: Calls contribute positive GEX, Puts contribute negative GEX
+        - Vanna shows delta sensitivity to IV changes
         """
         import requests
 
@@ -155,7 +178,7 @@ class GEXCalculator:
             if oi == 0:
                 continue
 
-            # Get gamma (from API or calculate)
+            # Get gamma and IV (from API or calculate)
             if use_api_greeks and 'greeks' in opt and opt['greeks']:
                 gamma = opt['greeks'].get('gamma', 0)
                 iv = opt['greeks'].get('mid_iv', 0.25)
@@ -164,36 +187,57 @@ class GEXCalculator:
                 iv = 0.25  # Default IV assumption
                 gamma = self.calculate_gamma(spot_price, strike, dte, r, iv, option_type)
 
+            # Calculate Vanna (always calculate, not provided by API)
+            vanna = self.calculate_vanna(spot_price, strike, dte, r, iv, option_type)
+
             # Calculate GEX contribution
             # Calls: Dealers short = they have negative gamma = positive GEX (buying dips)
             # Puts: Dealers short = they have positive gamma = negative GEX (selling rallies)
             if option_type == 'call':
                 gex = gamma * oi * 100 * spot_price
+                vanna_exp = vanna * oi * 100 * spot_price
             else:  # put
                 gex = -gamma * oi * 100 * spot_price
+                vanna_exp = vanna * oi * 100 * spot_price  # Vanna same sign for calls/puts
 
             gex_data.append({
                 'strike': strike,
                 'option_type': option_type,
                 'open_interest': oi,
                 'gamma': gamma,
+                'vanna': vanna,
                 'iv': iv,
-                'gex': gex
+                'gex': gex,
+                'vanna_exposure': vanna_exp
             })
 
         df = pd.DataFrame(gex_data)
 
         if df.empty:
+            print("[GEX/Vanna] No options data - returning empty results")
             return None, {}
 
         # Aggregate GEX by strike
         gex_by_strike = df.groupby('strike')['gex'].sum().reset_index()
         gex_by_strike.columns = ['strike', 'net_gex']
 
-        # Find key levels
+        # Aggregate Vanna by strike
+        vanna_by_strike = df.groupby('strike')['vanna_exposure'].sum().reset_index()
+        vanna_by_strike.columns = ['strike', 'net_vanna']
+
+        # Find key GEX levels
         key_levels = self._find_key_levels(gex_by_strike, spot_price)
+
+        # Find key Vanna levels
+        vanna_levels = self._find_vanna_levels(vanna_by_strike, spot_price)
+        key_levels.update(vanna_levels)
+
+        # Add metadata
         key_levels['spot_price'] = spot_price
         key_levels['expiration'] = expiration
+        key_levels['dte'] = (exp_date - datetime.now()).days
+
+        print(f"[GEX/Vanna] Calculated from {len(df)} options at {len(gex_by_strike)} strikes ({key_levels['dte']}DTE)")
 
         return gex_by_strike, key_levels
 
@@ -243,6 +287,45 @@ class GEXCalculator:
             'zero_gex_level': zero_gex,
             'total_gex': total_gex,
             'current_gex': current_gex
+        }
+
+    def _find_vanna_levels(self, vanna_df, spot_price):
+        """
+        Find key Vanna levels for support/resistance.
+
+        Positive Vanna = Delta increases with IV increase = Support
+        Negative Vanna = Delta decreases with IV increase = Resistance
+        """
+        # Sort by strike
+        vanna_df = vanna_df.sort_values('strike')
+
+        # Find strikes with significant Vanna exposure (abs value)
+        vanna_df['abs_vanna'] = vanna_df['net_vanna'].abs()
+        vanna_df = vanna_df.sort_values('abs_vanna', ascending=False)
+
+        # Get top Vanna strikes below current price (support)
+        below_price = vanna_df[vanna_df['strike'] < spot_price]
+        vanna_support_1 = below_price.iloc[0]['strike'] if len(below_price) > 0 else None
+        vanna_support_1_strength = below_price.iloc[0]['net_vanna'] / 1e6 if len(below_price) > 0 else 0  # Normalize
+        vanna_support_2 = below_price.iloc[1]['strike'] if len(below_price) > 1 else None
+        vanna_support_2_strength = below_price.iloc[1]['net_vanna'] / 1e6 if len(below_price) > 1 else 0
+
+        # Get top Vanna strikes above current price (resistance)
+        above_price = vanna_df[vanna_df['strike'] > spot_price]
+        vanna_resistance_1 = above_price.iloc[0]['strike'] if len(above_price) > 0 else None
+        vanna_resistance_1_strength = above_price.iloc[0]['net_vanna'] / 1e6 if len(above_price) > 0 else 0
+        vanna_resistance_2 = above_price.iloc[1]['strike'] if len(above_price) > 1 else None
+        vanna_resistance_2_strength = above_price.iloc[1]['net_vanna'] / 1e6 if len(above_price) > 1 else 0
+
+        return {
+            'vanna_support_1': vanna_support_1,
+            'vanna_support_1_strength': vanna_support_1_strength,
+            'vanna_support_2': vanna_support_2,
+            'vanna_support_2_strength': vanna_support_2_strength,
+            'vanna_resistance_1': vanna_resistance_1,
+            'vanna_resistance_1_strength': vanna_resistance_1_strength,
+            'vanna_resistance_2': vanna_resistance_2,
+            'vanna_resistance_2_strength': vanna_resistance_2_strength
         }
 
     def print_levels(self, symbol='SPY'):
