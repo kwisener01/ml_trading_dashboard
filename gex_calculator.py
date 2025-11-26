@@ -80,17 +80,20 @@ class GEXCalculator:
         import requests
 
         # Get expirations
+        print(f"[GEX] Fetching expirations for {symbol}...")
         exp_url = f"{self.base_url}/markets/options/expirations"
         response = requests.get(exp_url, headers=self.headers, params={'symbol': symbol})
 
+        print(f"[GEX] Expirations API response: {response.status_code}")
         if response.status_code != 200:
-            raise Exception(f"Failed to get expirations: {response.text}")
+            raise Exception(f"Failed to get expirations (HTTP {response.status_code}): {response.text}")
 
         data = response.json()
         expirations = data.get('expirations', {}).get('date', [])
+        print(f"[GEX] Found {len(expirations)} expirations: {expirations[:5] if expirations else 'None'}")
 
         if not expirations:
-            raise Exception("No expirations found")
+            raise Exception("No expirations found in API response")
 
         # Get the nearest expiration (0DTE or 1DTE prioritized)
         today = datetime.now().strftime('%Y-%m-%d')
@@ -117,6 +120,7 @@ class GEXCalculator:
                 print(f"[WARNING] Using {dte}DTE options - may not capture daily dealer flows accurately")
 
         # Get options chain for nearest expiration
+        print(f"[GEX] Fetching options chain for expiration {nearest_exp}...")
         chain_url = f"{self.base_url}/markets/options/chains"
         response = requests.get(chain_url, headers=self.headers, params={
             'symbol': symbol,
@@ -124,11 +128,16 @@ class GEXCalculator:
             'greeks': 'true'
         })
 
+        print(f"[GEX] Options chain API response: {response.status_code}")
         if response.status_code != 200:
-            raise Exception(f"Failed to get chain: {response.text}")
+            raise Exception(f"Failed to get chain (HTTP {response.status_code}): {response.text}")
 
         chain_data = response.json()
         options = chain_data.get('options', {}).get('option', [])
+        print(f"[GEX] Received {len(options) if options else 0} options from chain")
+
+        if not options:
+            raise Exception(f"No options data in chain for expiration {nearest_exp}")
 
         return options, nearest_exp
 
@@ -152,10 +161,18 @@ class GEXCalculator:
         """
         import requests
 
+        print(f"\n[GEX] ========== Starting GEX/Vanna calculation for {symbol} ==========")
+
         # Get current spot price
+        print(f"[GEX] Fetching current price for {symbol}...")
         quote_url = f"{self.base_url}/markets/quotes"
         response = requests.get(quote_url, headers=self.headers, params={'symbols': symbol})
+
+        if response.status_code != 200:
+            raise Exception(f"Failed to get quote (HTTP {response.status_code}): {response.text}")
+
         spot_price = response.json()['quotes']['quote']['last']
+        print(f"[GEX] Current {symbol} price: ${spot_price:.2f}")
 
         # Get options chain
         options, expiration = self.get_options_chain(symbol)
@@ -169,6 +186,7 @@ class GEXCalculator:
 
         # Process each option
         gex_data = []
+        print(f"[GEX] Processing {len(options)} options (DTE={dte*365:.1f} days, r={r})...")
 
         for opt in options:
             strike = opt['strike']
@@ -213,9 +231,13 @@ class GEXCalculator:
 
         df = pd.DataFrame(gex_data)
 
+        print(f"[GEX] Processed {len(gex_data)} options with non-zero OI")
+
         if df.empty:
-            print("[GEX/Vanna] No options data - returning empty results")
+            print("[GEX/Vanna] ERROR: No options with open interest - returning empty results")
             return None, {}
+
+        print(f"[GEX] DataFrame created with {len(df)} rows")
 
         # Aggregate GEX by strike
         gex_by_strike = df.groupby('strike')['gex'].sum().reset_index()
