@@ -56,8 +56,8 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.20,  # Increased spacing significantly for mobile
-        row_heights=[0.50, 0.25, 0.25],  # Adjusted for better mobile visibility
+        vertical_spacing=0.15,  # Spacing for mobile visibility
+        row_heights=[0.45, 0.275, 0.275],  # Panel 1: 45%, Panels 2&3: 27.5% each for better visibility
         subplot_titles=(
             f"<b>{symbol} - Options Flow Analysis</b>",
             "<b>Panel 2: IV & Vanna Indicators</b>",
@@ -276,7 +276,17 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
     if has_price_data and len(price_df) > 1:
         panel_x = price_df.index if 'time' not in price_df.columns else price_df['time']
     else:
-        panel_x = [datetime.now(EST)]
+        panel_x = pd.Series([datetime.now(EST)])
+
+    # Add invisible trace to Panel 2 to ensure it renders
+    fig.add_trace(go.Scatter(
+        x=panel_x,
+        y=[iv_current] * len(panel_x),
+        mode='lines',
+        line=dict(color='rgba(0,0,0,0)', width=0),  # Invisible
+        showlegend=False,
+        hoverinfo='skip'
+    ), row=2, col=1)
 
     # Add horizontal reference lines for current values
     # IV as horizontal line spanning the chart
@@ -316,6 +326,16 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
     charm_current = pred.get('charm_pressure', 0)
     dealer_score_current = pred.get('dealer_flow_score', 0)
     is_charm_bullish = charm_current > 0
+
+    # Add invisible trace to Panel 3 to ensure it renders
+    fig.add_trace(go.Scatter(
+        x=panel_x,
+        y=[dealer_score_current] * len(panel_x),
+        mode='lines',
+        line=dict(color='rgba(0,0,0,0)', width=0),  # Invisible
+        showlegend=False,
+        hoverinfo='skip'
+    ), row=3, col=1)
 
     # Charm (REAL value from Black-Scholes calculation)
     charm_color = '#4CAF50' if is_charm_bullish else '#F44336'
