@@ -154,7 +154,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
             line_color="#00BCD4",
             line_width=3,
             annotation_text=f"GAMMA FLIP: ${gex_flip:.2f} (Major Pivot)",
-            annotation_position="right",
+            annotation_position="left",  # Changed from right to left for mobile visibility
             annotation=dict(font=dict(size=10, color="white"), bgcolor="#00838F"),
             row=1, col=1
         )
@@ -193,7 +193,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
             line_color="#9C27B0",
             line_width=2,
             annotation_text=f"VANNA S1: ${vanna_s1:.2f} (Pressure Zone)",
-            annotation_position="right",
+            annotation_position="left",  # Changed from right to left for mobile visibility
             annotation=dict(font=dict(size=9, color="white"), bgcolor="#7B1FA2"),
             row=1, col=1
         )
@@ -206,7 +206,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
             line_color="#FF9800",
             line_width=2,
             annotation_text=f"VANNA R1: ${vanna_r1:.2f} (Pressure Zone)",
-            annotation_position="right",
+            annotation_position="left",  # Changed from right to left for mobile visibility
             annotation=dict(font=dict(size=9, color="white"), bgcolor="#FF6D00"),
             row=1, col=1
         )
@@ -245,7 +245,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
             line_width=2,
             opacity=0.8,
             annotation_text=f"VWAP: ${vwap:.2f}",
-            annotation_position="right",
+            annotation_position="left",  # Changed from right to left for mobile visibility
             annotation=dict(font=dict(size=10, color="white"), bgcolor="#FF8F00"),  # Dark orange bg
             row=1, col=1
         )
@@ -294,7 +294,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
         y=iv_current,
         line=dict(color='#FF6B6B', width=2, dash='solid'),
         annotation_text=f"IV: {iv_current:.1f}%",
-        annotation_position="right",
+        annotation_position="left",  # Changed from right to left for mobile visibility
         annotation=dict(font=dict(size=10, color="white"), bgcolor="#FF6B6B"),
         row=2, col=1
     )
@@ -304,7 +304,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
         y=net_vanna_current,
         line=dict(color='#4ECDC4', width=2, dash='solid'),
         annotation_text=f"Net Vanna: {net_vanna_current:.1f}",
-        annotation_position="right",
+        annotation_position="left",  # Changed from right to left for mobile visibility
         annotation=dict(font=dict(size=10, color="white"), bgcolor="#4ECDC4"),
         row=2, col=1
     )
@@ -314,7 +314,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
         y=vanna_iv_current,
         line=dict(color='#95E1D3', width=2, dash='dot'),
         annotation_text=f"Vanna×IV: {vanna_iv_current:.1f}",
-        annotation_position="right",
+        annotation_position="left",  # Changed from right to left for mobile visibility
         annotation=dict(font=dict(size=10, color="white"), bgcolor="#95E1D3"),
         row=2, col=1
     )
@@ -348,7 +348,7 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
         y=charm_current,
         line=dict(color=charm_color, width=3 if in_charm_session else 2, dash='solid'),
         annotation_text=f"{charm_label}: {charm_current:.1f}",
-        annotation_position="right",
+        annotation_position="left",  # Changed from right to left for mobile visibility
         annotation=dict(font=dict(size=10, color="white"), bgcolor=charm_color),
         row=3, col=1
     )
