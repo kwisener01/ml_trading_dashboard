@@ -1,4 +1,4 @@
-# Version: 2025-11-26-fix-panels-visibility-v2
+# Version: 2025-11-26-v3-gex-panels-fixed
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -700,6 +700,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
+st.caption("🟢 Version: 2025-11-26-v3 (GEX + Panels Fixed)")
 st.markdown("---")
 
 # Sidebar
