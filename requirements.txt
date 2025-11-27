@@ -1,3 +1,4 @@
+# Updated 2025-11-26 - Force rebuild for GEX/Panel fixes
 requests>=2.31.0
 pandas>=2.2.0
 numpy>=1.26.0

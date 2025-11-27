@@ -1,3 +1,4 @@
+# Version: 2025-11-26-v3-gex-panels-fixed
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -55,8 +56,8 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.20,  # Increased spacing significantly for mobile
-        row_heights=[0.50, 0.25, 0.25],  # Adjusted for better mobile visibility
+        vertical_spacing=0.15,  # Spacing for mobile visibility
+        row_heights=[0.45, 0.275, 0.275],  # Panel 1: 45%, Panels 2&3: 27.5% each for better visibility
         subplot_titles=(
             f"<b>{symbol} - Options Flow Analysis</b>",
             "<b>Panel 2: IV & Vanna Indicators</b>",
@@ -275,7 +276,17 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
     if has_price_data and len(price_df) > 1:
         panel_x = price_df.index if 'time' not in price_df.columns else price_df['time']
     else:
-        panel_x = [datetime.now(EST)]
+        panel_x = pd.Series([datetime.now(EST)])
+
+    # Add invisible trace to Panel 2 to ensure it renders
+    fig.add_trace(go.Scatter(
+        x=panel_x,
+        y=[iv_current] * len(panel_x),
+        mode='lines',
+        line=dict(color='rgba(0,0,0,0)', width=0),  # Invisible
+        showlegend=False,
+        hoverinfo='skip'
+    ), row=2, col=1)
 
     # Add horizontal reference lines for current values
     # IV as horizontal line spanning the chart
@@ -315,6 +326,16 @@ def create_options_flow_chart(pred, price_df, symbol, in_charm_session=False, in
     charm_current = pred.get('charm_pressure', 0)
     dealer_score_current = pred.get('dealer_flow_score', 0)
     is_charm_bullish = charm_current > 0
+
+    # Add invisible trace to Panel 3 to ensure it renders
+    fig.add_trace(go.Scatter(
+        x=panel_x,
+        y=[dealer_score_current] * len(panel_x),
+        mode='lines',
+        line=dict(color='rgba(0,0,0,0)', width=0),  # Invisible
+        showlegend=False,
+        hoverinfo='skip'
+    ), row=3, col=1)
 
     # Charm (REAL value from Black-Scholes calculation)
     charm_color = '#4CAF50' if is_charm_bullish else '#F44336'
@@ -679,6 +700,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
+st.caption("🟢 Version: 2025-11-26-v3 (GEX + Panels Fixed)")
 st.markdown("---")
 
 # Sidebar
@@ -1363,7 +1385,11 @@ if 'predictions' in st.session_state:
                             st.write("**This debug info will help diagnose the issue.**")
                             st.write("The GEX calculator is likely returning empty results without raising an exception.")
                 else:
-                    st.success(f"✅ **GEX Levels Active:** Gamma Flip: ${gex_flip:.2f if gex_flip else 'N/A'} | Support: ${gex_support:.0f if gex_support else 'N/A'} | Resistance: ${gex_resistance:.0f if gex_resistance else 'N/A'}")
+                    # Format GEX values with proper None handling
+                    flip_str = f"${gex_flip:.2f}" if gex_flip is not None else "N/A"
+                    support_str = f"${gex_support:.0f}" if gex_support is not None else "N/A"
+                    resistance_str = f"${gex_resistance:.0f}" if gex_resistance is not None else "N/A"
+                    st.success(f"✅ **GEX Levels Active:** Gamma Flip: {flip_str} | Support: {support_str} | Resistance: {resistance_str}")
             else:
                 st.error("❌ Chart function returned None")
                 st.caption("Debug info:")
