@@ -548,6 +548,8 @@ class TradingPredictor:
         predictions['vanna_resistance_1_strength'] = None
         predictions['vanna_resistance_2'] = None
         predictions['vanna_resistance_2_strength'] = None
+        predictions['dealer_pressure_score'] = None
+        predictions['dealer_pressure_factors'] = []
 
         # GEX (Gamma Exposure) levels for hedge pressure
         try:
@@ -568,6 +570,14 @@ class TradingPredictor:
                 predictions['gex_regime'] = 'positive' if gex_levels.get('total_gex', 0) > 0 else 'negative'
                 predictions['gex_current'] = gex_levels.get('current_gex')
                 predictions['gex_error'] = None
+
+                # Estimate dealer hedge pressure using notional GEX/Vanna around spot
+                dealer_pressure_score, dealer_pressure_factors = self._compute_dealer_pressure(
+                    current_price,
+                    gex_levels,
+                )
+                predictions['dealer_pressure_score'] = dealer_pressure_score
+                predictions['dealer_pressure_factors'] = dealer_pressure_factors
 
                 # High-impact strikes for day trading
                 predictions['gamma_walls'] = gex_levels.get('gamma_walls', [])
@@ -705,6 +715,61 @@ class TradingPredictor:
             predictions['options_alternative'] = None
 
         return predictions
+
+    def _compute_dealer_pressure(self, spot_price, gex_levels):
+        """
+        Derive a dealer hedge pressure score from notional GEX/Vanna.
+
+        A positive score tilts toward dealer buying support; negative means
+        hedging flows lean bearish. The score is bounded to [-100, 100].
+        """
+
+        factors = []
+        score = 0.0
+
+        total_gex = gex_levels.get('total_gex') or 0
+        if total_gex > 0:
+            score += 10
+            factors.append("Positive total GEX (mean reversion)")
+        elif total_gex < 0:
+            score -= 10
+            factors.append("Negative total GEX (momentum)")
+
+        current_gex = gex_levels.get('current_gex')
+        max_abs_wall = max(
+            abs(gex_levels.get('max_gex_value') or 0),
+            abs(gex_levels.get('min_gex_value') or 0),
+            1e-9,
+        )
+
+        if current_gex is not None:
+            gex_bias = np.tanh(current_gex / max_abs_wall) * 60
+            score += gex_bias
+            direction = "buying" if current_gex > 0 else "selling"
+            factors.append(f"Dealers {direction} near spot: {current_gex:,.0f} GEX notional")
+
+        flip = gex_levels.get('zero_gex_level')
+        if flip:
+            if spot_price > flip:
+                score += 8
+                factors.append(f"Price above gamma flip (${flip:.0f})")
+            else:
+                score -= 8
+                factors.append(f"Price below gamma flip (${flip:.0f})")
+
+        vanna_support = gex_levels.get('vanna_support_1_strength') or 0
+        vanna_resistance = abs(gex_levels.get('vanna_resistance_1_strength') or 0)
+        net_vanna = vanna_support - vanna_resistance
+
+        if net_vanna != 0:
+            vanna_bias = np.tanh(net_vanna) * 25
+            score += vanna_bias
+            bias_label = "supportive" if net_vanna > 0 else "resistive"
+            factors.append(f"Vanna {bias_label}: net {net_vanna:+.2f}M deltas/IV")
+
+        score = max(-100, min(100, score))
+
+        return score, factors
     
     def format_signal(self, predictions):
         """
