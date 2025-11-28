@@ -90,6 +90,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
+st.caption("Version 1.3.0 | Last Updated: 2025-11-28 - Enhanced label visibility & UI improvements")
 st.markdown("---")
 
 # Sidebar
@@ -138,6 +139,14 @@ with st.sidebar:
     if trading_mode == "Day Trading (Intraday)":
         st.markdown("### ⏰ Intraday Settings")
         interval = st.selectbox("Chart Interval", ['5min', '15min', '1min'], index=0)
+
+        # Make Prediction button (for day trading)
+        if st.button("🔄 Generate Prediction", type="primary", key="predict_intraday"):
+            st.session_state['generate_prediction'] = True
+            st.session_state['trading_mode'] = trading_mode
+            st.session_state['interval'] = interval
+            if 'last_refresh' in st.session_state:
+                st.session_state['last_refresh'] = time.time()  # Reset timer on manual refresh
 
         # Auto-refresh settings
         st.markdown("### 🔄 Auto-Refresh")
@@ -209,14 +218,15 @@ with st.sidebar:
     else:
         interval = 'daily'
 
-    trade_quality_threshold = st.slider("Trade Quality Threshold", 0, 100, 60)
+        # Make Prediction button (for daily trading)
+        if st.button("🔄 Generate Prediction", type="primary", key="predict_daily"):
+            st.session_state['generate_prediction'] = True
+            st.session_state['trading_mode'] = trading_mode
+            st.session_state['interval'] = interval
+            if 'last_refresh' in st.session_state:
+                st.session_state['last_refresh'] = time.time()  # Reset timer on manual refresh
 
-    if st.button("🔄 Generate Prediction", type="primary"):
-        st.session_state['generate_prediction'] = True
-        st.session_state['trading_mode'] = trading_mode
-        st.session_state['interval'] = interval
-        if 'last_refresh' in st.session_state:
-            st.session_state['last_refresh'] = time.time()  # Reset timer on manual refresh
+    trade_quality_threshold = st.slider("Trade Quality Threshold", 0, 100, 60)
     
     st.markdown("---")
     st.markdown("### 📊 Model Info")
@@ -688,10 +698,11 @@ if 'predictions' in st.session_state:
             annotation_text=f"<b>CURRENT: ${current:.2f}</b>",
             annotation_position="left",
             annotation=dict(
-                font=dict(size=12, color="white"),
+                font=dict(size=14, color="white", family="Arial Black"),
                 bgcolor="#2196F3",
                 bordercolor="white",
-                borderwidth=1
+                borderwidth=2,
+                borderpad=4
             )
         )
 
@@ -706,9 +717,11 @@ if 'predictions' in st.session_state:
                 annotation_text=f"<b>TARGET: ${pred_high:.2f}</b> (+{upside_pct:.1f}%)",
                 annotation_position="right",
                 annotation=dict(
-                    font=dict(size=10, color="white"),
+                    font=dict(size=12, color="white", family="Arial"),
                     bgcolor="#00C853",
-                    borderwidth=1
+                    bordercolor="white",
+                    borderwidth=2,
+                    borderpad=4
                 )
             )
 
@@ -723,9 +736,11 @@ if 'predictions' in st.session_state:
                 annotation_text=f"<b>STOP: ${pred_low:.2f}</b> (-{downside_pct:.1f}%)",
                 annotation_position="right",
                 annotation=dict(
-                    font=dict(size=10, color="white"),
+                    font=dict(size=12, color="white", family="Arial"),
                     bgcolor="#D50000",
-                    borderwidth=1
+                    bordercolor="white",
+                    borderwidth=2,
+                    borderpad=4
                 )
             )
 
@@ -741,9 +756,11 @@ if 'predictions' in st.session_state:
                 annotation_text=f"<b>VANNA R1: ${vanna_r1:.2f}</b>{strength_text}",
                 annotation_position="left",
                 annotation=dict(
-                    font=dict(size=9, color="white"),
+                    font=dict(size=11, color="white", family="Arial"),
                     bgcolor="#FF6D00",
-                    borderwidth=1
+                    bordercolor="white",
+                    borderwidth=2,
+                    borderpad=3
                 )
             )
 
@@ -758,9 +775,11 @@ if 'predictions' in st.session_state:
                 annotation_text=f"<b>VANNA R2: ${vanna_r2:.2f}</b>{strength_text}",
                 annotation_position="left",
                 annotation=dict(
-                    font=dict(size=8, color="black"),
-                    bgcolor="#FFB74D",
-                    borderwidth=1
+                    font=dict(size=10, color="white", family="Arial"),
+                    bgcolor="#FF8F00",
+                    bordercolor="white",
+                    borderwidth=2,
+                    borderpad=3
                 )
             )
 
@@ -776,9 +795,11 @@ if 'predictions' in st.session_state:
                 annotation_text=f"<b>VANNA S1: ${vanna_s1:.2f}</b>{strength_text}",
                 annotation_position="left",
                 annotation=dict(
-                    font=dict(size=9, color="white"),
+                    font=dict(size=11, color="white", family="Arial"),
                     bgcolor="#7B1FA2",
-                    borderwidth=1
+                    bordercolor="white",
+                    borderwidth=2,
+                    borderpad=3
                 )
             )
 
@@ -793,9 +814,11 @@ if 'predictions' in st.session_state:
                 annotation_text=f"<b>VANNA S2: ${vanna_s2:.2f}</b>{strength_text}",
                 annotation_position="left",
                 annotation=dict(
-                    font=dict(size=8, color="black"),
-                    bgcolor="#CE93D8",
-                    borderwidth=1
+                    font=dict(size=10, color="white", family="Arial"),
+                    bgcolor="#9C27B0",
+                    bordercolor="white",
+                    borderwidth=2,
+                    borderpad=3
                 )
             )
 
@@ -809,9 +832,11 @@ if 'predictions' in st.session_state:
                 annotation_text=f"<b>GEX FLIP: ${gex_flip:.2f}</b>",
                 annotation_position="right",
                 annotation=dict(
-                    font=dict(size=10, color="white"),
+                    font=dict(size=12, color="white", family="Arial"),
                     bgcolor="#00838F",
-                    borderwidth=1
+                    bordercolor="white",
+                    borderwidth=2,
+                    borderpad=4
                 )
             )
 
@@ -824,9 +849,11 @@ if 'predictions' in st.session_state:
                 annotation_text=f"<b>GEX SUPPORT: ${gex_support:.0f}</b><br>Dealers BUY",
                 annotation_position="right",
                 annotation=dict(
-                    font=dict(size=9, color="white"),
+                    font=dict(size=11, color="white", family="Arial"),
                     bgcolor="#33691E",
-                    borderwidth=1
+                    bordercolor="white",
+                    borderwidth=2,
+                    borderpad=3
                 )
             )
 
@@ -839,9 +866,11 @@ if 'predictions' in st.session_state:
                 annotation_text=f"<b>GEX RESISTANCE: ${gex_resistance:.0f}</b><br>Dealers SELL",
                 annotation_position="right",
                 annotation=dict(
-                    font=dict(size=9, color="white"),
+                    font=dict(size=11, color="white", family="Arial"),
                     bgcolor="#6A1B9A",
-                    borderwidth=1
+                    bordercolor="white",
+                    borderwidth=2,
+                    borderpad=3
                 )
             )
 
