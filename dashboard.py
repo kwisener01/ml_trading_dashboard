@@ -90,7 +90,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
-st.caption("Version 1.4.0 | Last Updated: 2025-11-28 - Repositioned labels inside chart like reference")
+st.caption("Version 1.5.0 | Last Updated: 2025-11-28 - Zoomed chart with zones only, levels below")
 st.markdown("---")
 
 # Sidebar
@@ -627,23 +627,21 @@ if 'predictions' in st.session_state:
                 direction = "above" if level > current else "below"
                 distant_levels.append(f"{name}: ${level:.2f} ({distance:.1f} points {direction}){level_type}")
 
-        # Add RESISTANCE ZONE (red shaded area) - between Vanna R1 and GEX resistance
+        # Add REJECTION ZONE (red shaded area) - ABOVE current price
+        # Use resistance levels that are above current price
+        resistance_levels_above = [l for l in [vanna_r1, vanna_r2, gex_resistance] if l and l > current and level_valid(l)]
+
         resistance_top = None
         resistance_bottom = None
-        valid_r1 = level_valid(vanna_r1)
-        valid_gex_r = level_valid(gex_resistance)
 
-        if valid_r1 and valid_gex_r:
-            resistance_top = max(vanna_r1, gex_resistance)
-            resistance_bottom = min(vanna_r1, gex_resistance)
-        elif valid_r1:
-            resistance_top = vanna_r1 * 1.003
-            resistance_bottom = vanna_r1
-        elif valid_gex_r:
-            resistance_top = gex_resistance * 1.003
-            resistance_bottom = gex_resistance
+        if len(resistance_levels_above) >= 2:
+            resistance_bottom = min(resistance_levels_above)
+            resistance_top = max(resistance_levels_above)
+        elif len(resistance_levels_above) == 1:
+            resistance_bottom = resistance_levels_above[0]
+            resistance_top = resistance_levels_above[0] * 1.005
 
-        if resistance_top and resistance_bottom and resistance_top > current:
+        if resistance_top and resistance_bottom:
             fig.add_hrect(
                 y0=resistance_bottom, y1=resistance_top,
                 fillcolor="rgba(255, 82, 82, 0.25)",
@@ -664,23 +662,21 @@ if 'predictions' in st.session_state:
                 yanchor="middle"
             )
 
-        # Add SUPPORT ZONE (green shaded area) - between Vanna S1 and GEX support
+        # Add BOUNCE ZONE (green shaded area) - BELOW current price
+        # Use support levels that are below current price
+        support_levels_below = [l for l in [vanna_s1, vanna_s2, gex_support] if l and l < current and level_valid(l)]
+
         support_top = None
         support_bottom = None
-        valid_s1 = level_valid(vanna_s1)
-        valid_gex_s = level_valid(gex_support)
 
-        if valid_s1 and valid_gex_s:
-            support_top = max(vanna_s1, gex_support)
-            support_bottom = min(vanna_s1, gex_support)
-        elif valid_s1:
-            support_top = vanna_s1
-            support_bottom = vanna_s1 * 0.997
-        elif valid_gex_s:
-            support_top = gex_support
-            support_bottom = gex_support * 0.997
+        if len(support_levels_below) >= 2:
+            support_top = max(support_levels_below)
+            support_bottom = min(support_levels_below)
+        elif len(support_levels_below) == 1:
+            support_top = support_levels_below[0]
+            support_bottom = support_levels_below[0] * 0.995
 
-        if support_top and support_bottom and support_bottom < current:
+        if support_top and support_bottom:
             fig.add_hrect(
                 y0=support_bottom, y1=support_top,
                 fillcolor="rgba(0, 230, 118, 0.25)",
@@ -722,207 +718,45 @@ if 'predictions' in st.session_state:
             yanchor="middle"
         )
 
-        # Add Vanna resistance levels (if available and valid) - Negative Vanna = Repellent
-        if vanna_r1 and level_valid(vanna_r1):
-            strength = pred.get('vanna_resistance_1_strength')
-            fig.add_hline(
-                y=vanna_r1,
-                line_dash="dash",
-                line_color="#FF9800",
-                line_width=2
-            )
-            fig.add_annotation(
-                x=0.02, y=vanna_r1,
-                xref="paper", yref="y",
-                text=f"<b>Vanna R1: ${vanna_r1:.2f}</b>",
-                showarrow=False,
-                font=dict(size=11, color="#FF6D00", family="Arial Bold"),
-                bgcolor="rgba(255, 255, 255, 0.9)",
-                bordercolor="#FF9800",
-                borderwidth=1,
-                borderpad=3,
-                xanchor="left",
-                yanchor="middle"
-            )
+        # Collect all levels to display below chart (not on chart)
+        all_levels_list = []
 
-        if vanna_r2 and level_valid(vanna_r2):
-            fig.add_hline(
-                y=vanna_r2,
-                line_dash="dash",
-                line_color="#FFB74D",
-                line_width=1
-            )
-            fig.add_annotation(
-                x=0.02, y=vanna_r2,
-                xref="paper", yref="y",
-                text=f"<b>Vanna R2: ${vanna_r2:.2f}</b>",
-                showarrow=False,
-                font=dict(size=10, color="#FF8F00", family="Arial Bold"),
-                bgcolor="rgba(255, 255, 255, 0.85)",
-                bordercolor="#FFB74D",
-                borderwidth=1,
-                borderpad=2,
-                xanchor="left",
-                yanchor="middle"
-            )
+        def add_level_to_list(level, name, level_type=""):
+            if level:
+                distance_from_current = level - current
+                direction = "above" if distance_from_current > 0 else "below"
+                all_levels_list.append(f"{name}: ${level:.2f} ({abs(distance_from_current):.2f} points {direction}){level_type}")
 
-        # Add Vanna support levels (if available and valid) - Positive Vanna = Attractor
-        if vanna_s1 and level_valid(vanna_s1):
-            fig.add_hline(
-                y=vanna_s1,
-                line_dash="dash",
-                line_color="#9C27B0",
-                line_width=2
-            )
-            fig.add_annotation(
-                x=0.02, y=vanna_s1,
-                xref="paper", yref="y",
-                text=f"<b>Vanna S1: ${vanna_s1:.2f}</b>",
-                showarrow=False,
-                font=dict(size=11, color="#7B1FA2", family="Arial Bold"),
-                bgcolor="rgba(255, 255, 255, 0.9)",
-                bordercolor="#9C27B0",
-                borderwidth=1,
-                borderpad=3,
-                xanchor="left",
-                yanchor="middle"
-            )
-
-        if vanna_s2 and level_valid(vanna_s2):
-            fig.add_hline(
-                y=vanna_s2,
-                line_dash="dash",
-                line_color="#CE93D8",
-                line_width=1
-            )
-            fig.add_annotation(
-                x=0.02, y=vanna_s2,
-                xref="paper", yref="y",
-                text=f"<b>Vanna S2: ${vanna_s2:.2f}</b>",
-                showarrow=False,
-                font=dict(size=10, color="#9C27B0", family="Arial Bold"),
-                bgcolor="rgba(255, 255, 255, 0.85)",
-                bordercolor="#CE93D8",
-                borderwidth=1,
-                borderpad=2,
-                xanchor="left",
-                yanchor="middle"
-            )
-
-        # Check distant levels for all GEX and Vanna levels
+        # Add all levels to the list
         gex_regime_text = " - Momentum Mode" if pred.get('gex_regime') == 'negative' else " - Mean Reversion Mode"
-        check_and_add_distant(gex_flip, "GEX FLIP", gex_regime_text if gex_flip else "")
-        check_and_add_distant(gex_support, "GEX SUPPORT", " - Dealers BUY")
-        check_and_add_distant(gex_resistance, "GEX RESISTANCE", " - Dealers SELL")
-        check_and_add_distant(vanna_r1, "VANNA R1", " - Resistance")
-        check_and_add_distant(vanna_r2, "VANNA R2", " - Resistance")
-        check_and_add_distant(vanna_s1, "VANNA S1", " - Support")
-        check_and_add_distant(vanna_s2, "VANNA S2", " - Support")
+        add_level_to_list(gex_flip, "GEX Flip", gex_regime_text if gex_flip else "")
+        add_level_to_list(gex_support, "GEX Support", " - Dealers BUY")
+        add_level_to_list(gex_resistance, "GEX Resistance", " - Dealers SELL")
+        add_level_to_list(vanna_r1, "Vanna R1", " - Resistance")
+        add_level_to_list(vanna_r2, "Vanna R2", " - Resistance")
+        add_level_to_list(vanna_s1, "Vanna S1", " - Support")
+        add_level_to_list(vanna_s2, "Vanna S2", " - Support")
 
-        # Add GEX (Gamma Exposure) hedge levels - only if within valid range
-        if gex_flip and level_valid(gex_flip):
-            regime_text = "Below GEX Flip = Momentum Mode<br>Above GEX Flip = Mean Reversion"
-            fig.add_hline(
-                y=gex_flip,
-                line_dash="dashdot",
-                line_color="#00BCD4",
-                line_width=3
-            )
-            fig.add_annotation(
-                x=0.98, y=gex_flip,
-                xref="paper", yref="y",
-                text=regime_text,
-                showarrow=False,
-                font=dict(size=9, color="black", family="Arial"),
-                bgcolor="rgba(255, 255, 200, 0.9)",
-                bordercolor="orange",
-                borderwidth=1,
-                borderpad=3,
-                xanchor="right",
-                yanchor="middle"
-            )
+        # Calculate y-axis range to zoom in on zones
+        # Only include current price and zone boundaries
+        zoom_levels = [current]
+        if resistance_top:
+            zoom_levels.append(resistance_top)
+        if resistance_bottom:
+            zoom_levels.append(resistance_bottom)
+        if support_top:
+            zoom_levels.append(support_top)
+        if support_bottom:
+            zoom_levels.append(support_bottom)
 
-        if gex_support and level_valid(gex_support):
-            fig.add_hline(
-                y=gex_support,
-                line_dash="dot",
-                line_color="#76FF03",
-                line_width=2
-            )
-            fig.add_annotation(
-                x=0.98, y=gex_support,
-                xref="paper", yref="y",
-                text=f"<b>GEX Support: ${gex_support:.0f}</b><br>Dealers BUY",
-                showarrow=False,
-                font=dict(size=10, color="#33691E", family="Arial Bold"),
-                bgcolor="rgba(255, 255, 255, 0.9)",
-                bordercolor="#76FF03",
-                borderwidth=1,
-                borderpad=3,
-                xanchor="right",
-                yanchor="middle"
-            )
-
-        if gex_resistance and level_valid(gex_resistance):
-            fig.add_hline(
-                y=gex_resistance,
-                line_dash="dot",
-                line_color="#E040FB",
-                line_width=2
-            )
-            fig.add_annotation(
-                x=0.98, y=gex_resistance,
-                xref="paper", yref="y",
-                text=f"<b>GEX Resistance: ${gex_resistance:.0f}</b><br>Dealers SELL",
-                showarrow=False,
-                font=dict(size=10, color="#6A1B9A", family="Arial Bold"),
-                bgcolor="rgba(255, 255, 255, 0.9)",
-                bordercolor="#E040FB",
-                borderwidth=1,
-                borderpad=3,
-                xanchor="right",
-                yanchor="middle"
-            )
-
-        # Calculate y-axis range centered on current price and all levels
-        # Only include levels within 10 points to avoid scaling issues
-        def is_valid_level(level, current_price, max_points=10):
-            if level is None:
-                return False
-            return abs(level - current_price) <= max_points
-
-        all_levels = [current]
-        if pred_high and is_valid_level(pred_high, current):
-            all_levels.append(pred_high)
-        if pred_low and is_valid_level(pred_low, current):
-            all_levels.append(pred_low)
-        if vanna_r1 and is_valid_level(vanna_r1, current):
-            all_levels.append(vanna_r1)
-        if vanna_r2 and is_valid_level(vanna_r2, current):
-            all_levels.append(vanna_r2)
-        if vanna_s1 and is_valid_level(vanna_s1, current):
-            all_levels.append(vanna_s1)
-        if vanna_s2 and is_valid_level(vanna_s2, current):
-            all_levels.append(vanna_s2)
-        # Add GEX levels only if within reasonable range
-        if gex_support and is_valid_level(gex_support, current):
-            all_levels.append(gex_support)
-        if gex_resistance and is_valid_level(gex_resistance, current):
-            all_levels.append(gex_resistance)
-        if gex_flip and is_valid_level(gex_flip, current):
-            all_levels.append(gex_flip)
-
-        # Set y-axis range with good padding for visibility
-        y_min = min(all_levels) * 0.995  # 0.5% below lowest level
-        y_max = max(all_levels) * 1.005  # 0.5% above highest level
-
-        # Ensure minimum range of 2% for visibility
-        price_range = y_max - y_min
-        min_range = current * 0.02
-        if price_range < min_range:
-            center = (y_max + y_min) / 2
-            y_min = center - min_range / 2
-            y_max = center + min_range / 2
+        # Set y-axis range with padding to show zones clearly
+        if len(zoom_levels) > 1:
+            y_min = min(zoom_levels) * 0.997  # Small padding below
+            y_max = max(zoom_levels) * 1.003  # Small padding above
+        else:
+            # If no zones, show range around current price
+            y_min = current * 0.99
+            y_max = current * 1.01
 
         fig.update_layout(
             title=dict(
@@ -966,19 +800,19 @@ if 'predictions' in st.session_state:
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # Improved chart legend with clear descriptions
+        # Chart shows only zones and current price
         st.markdown("""
-        **Chart Legend:**
-        - 🔵 **Entry** (Current Price) | 🟠 **Vanna R** (Resistance) | 🟣 **Vanna S** (Support)
-        - ⚡ **GEX Flip** (Regime Change) | 💚 **GEX Support** | 💜 **GEX Resistance**
-        - 🟢 **BOUNCE ZONE** (Strong Support) | 🔴 **REJECTION ZONE** (Strong Resistance)
+        **Chart:**
+        - 🔵 **Current Price** | 🟢 **BOUNCE ZONE** (below price) | 🔴 **REJECTION ZONE** (above price)
         """)
 
-        # Show distant levels (beyond 10 points from current price)
-        if distant_levels:
+        # Show all individual levels below chart
+        if all_levels_list:
             st.markdown("---")
-            st.markdown("**📍 Additional Levels (Beyond 10 Points):**")
-            for level_info in distant_levels:
+            st.markdown("**📊 All Key Levels:**")
+            # Sort levels by price (descending)
+            sorted_levels = sorted(all_levels_list, key=lambda x: float(x.split('$')[1].split(' ')[0]), reverse=True)
+            for level_info in sorted_levels:
                 st.caption(f"• {level_info}")
 
         # GEX Regime indicator
