@@ -859,6 +859,30 @@ if 'predictions' in st.session_state:
             st.markdown("### 🧭 Strike Hedge Map (Gamma & Vanna)")
             st.caption("Notional exposures in millions to mirror a TradingView-style overlay of key levels.")
 
+            combined_strikes = []
+            if gex_curve:
+                combined_strikes.extend([row['strike'] for row in gex_curve])
+            if vanna_curve:
+                combined_strikes.extend([row['strike'] for row in vanna_curve])
+
+            strike_min, strike_max = (min(combined_strikes), max(combined_strikes)) if combined_strikes else (None, None)
+
+            col_zoom, col_toggle = st.columns([3, 1])
+            with col_zoom:
+                zoom_pct = st.slider(
+                    "Zoom around spot (±%)",
+                    min_value=1,
+                    max_value=25,
+                    value=7,
+                    help="Adjust the visible strike window around the current price to make nearby levels easier to read."
+                )
+            with col_toggle:
+                show_full_range = st.checkbox(
+                    "Show full strikes",
+                    value=False,
+                    help="Disable zooming to view every strike returned for the expiry."
+                )
+
             fig_levels = make_subplots(specs=[[{"secondary_y": True}]])
 
             if gex_curve:
@@ -963,6 +987,11 @@ if 'predictions' in st.session_state:
             fig_levels.update_xaxes(title_text="Strike ($)")
             fig_levels.update_yaxes(title_text="Net Gamma (Millions $ Notional)", secondary_y=False)
             fig_levels.update_yaxes(title_text="Net Vanna (Millions $ Notional)", secondary_y=True)
+
+            if not show_full_range and strike_min is not None and strike_max is not None:
+                zoom_lower = max(strike_min, current * (1 - zoom_pct / 100))
+                zoom_upper = min(strike_max, current * (1 + zoom_pct / 100))
+                fig_levels.update_xaxes(range=[zoom_lower, zoom_upper])
 
             st.plotly_chart(fig_levels, use_container_width=True)
 
