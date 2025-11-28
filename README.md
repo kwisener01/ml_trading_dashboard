@@ -99,6 +99,14 @@ files_ml_system/
 - Tradier API account (free)
 - $25,000+ for day trading (PDT rule)
 
+## What's missing for confident live trading
+
+- **Broker execution & risk controls**: This repo stops at generating signals; you'll need broker connectivity, position sizing, max-loss/position limits, and pre-/post-trade risk checks to protect capital.
+- **Fill quality & latency monitoring**: Add real-time slippage/latency tracking plus alerts so you know when the model assumptions no longer match live fills.
+- **Paper trading & guardrails**: Run in a paper account first, compare expected vs. realized P&L, and add kill-switch conditions (e.g., stop after consecutive losses or slippage spikes).
+- **Alternative data (dark pools)**: Dark pool prints/levels are not collected here; you'd need a feed (institutional tape, dark pool summaries) and a parser to overlay those levels on the dashboard.
+- **0DTE options depth/flow**: The dashboard only computes Vanna levels from Tradier quotes; it does not track zero-DTE gamma walls or large option strikes. Integrating a high-granularity options order-flow/oi feed and summarizing the top strikes by expiry would be required.
+
 ## Disclaimer
 
 **Not financial advice.** Use at your own risk. Past performance doesn't guarantee future results.

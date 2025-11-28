@@ -24,6 +24,10 @@ st.set_page_config(
     layout="wide"
 )
 
+# Dashboard metadata
+VERSION = "2.1.0"
+last_updated_display = datetime.now(EST).strftime("%Y-%m-%d %H:%M %Z")
+
 # Auto-download latest models from S3 on startup
 @st.cache_resource(ttl=3600)  # Cache for 1 hour
 def ensure_latest_models():
@@ -90,7 +94,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
-st.caption("Version 2.0.0 | Last Updated: 2025-11-28 - Time-to-target & options recommendations")
+st.caption(f"Version {VERSION} | Last Updated: {last_updated_display}")
 st.markdown("---")
 
 # Sidebar
