@@ -24,6 +24,10 @@ st.set_page_config(
     layout="wide"
 )
 
+# Dashboard metadata
+VERSION = "2.1.0"
+last_updated_display = datetime.now(EST).strftime("%Y-%m-%d %H:%M %Z")
+
 # Auto-download latest models from S3 on startup
 @st.cache_resource(ttl=3600)  # Cache for 1 hour
 def ensure_latest_models():
@@ -90,7 +94,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
-st.caption("Version 2.0.0 | Last Updated: 2025-11-28 - Time-to-target & options recommendations")
+st.caption(f"Version {VERSION} | Last Updated: {last_updated_display}")
 st.markdown("---")
 
 # Sidebar
@@ -426,66 +430,71 @@ if 'predictions' in st.session_state:
         st.markdown("---")
         st.subheader("⚡ Net Hedge Pressure")
 
-        # Calculate hedge pressure based on price proximity to levels
-        current = pred['current_price']
+        # Prefer dealer pressure derived from notional GEX/Vanna; fall back to
+        # proximity-based heuristic if not available
+        pressure_score = pred.get('dealer_pressure_score')
+        pressure_factors = pred.get('dealer_pressure_factors') or []
 
-        # Get all levels
-        vanna_s1 = pred.get('vanna_support_1')
-        vanna_s2 = pred.get('vanna_support_2')
-        vanna_r1 = pred.get('vanna_resistance_1')
-        vanna_r2 = pred.get('vanna_resistance_2')
-        gex_support = pred.get('gex_support')
-        gex_resistance = pred.get('gex_resistance')
-        gex_flip = pred.get('gex_zero_level')
-        gex_regime = pred.get('gex_regime', 'unknown')
+        if pressure_score is None:
+            # Calculate hedge pressure based on price proximity to levels
+            current = pred['current_price']
 
-        # Calculate pressure score (-100 to +100)
-        pressure_score = 0
-        pressure_factors = []
+            # Get all levels
+            vanna_s1 = pred.get('vanna_support_1')
+            vanna_s2 = pred.get('vanna_support_2')
+            vanna_r1 = pred.get('vanna_resistance_1')
+            vanna_r2 = pred.get('vanna_resistance_2')
+            gex_support = pred.get('gex_support')
+            gex_resistance = pred.get('gex_resistance')
+            gex_flip = pred.get('gex_zero_level')
+            gex_regime = pred.get('gex_regime', 'unknown')
 
-        # GEX regime factor
-        if gex_regime == 'positive':
-            pressure_score += 10
-            pressure_factors.append("GEX+ (mean reversion)")
-        elif gex_regime == 'negative':
-            pressure_score -= 10
-            pressure_factors.append("GEX- (momentum)")
+            # Calculate pressure score (-100 to +100)
+            pressure_score = 0
 
-        # Price relative to GEX flip
-        if gex_flip and current:
-            if current > gex_flip:
-                pressure_score += 15
-                pressure_factors.append(f"Above GEX Flip (${gex_flip:.0f})")
-            else:
-                pressure_score -= 15
-                pressure_factors.append(f"Below GEX Flip (${gex_flip:.0f})")
+            # GEX regime factor
+            if gex_regime == 'positive':
+                pressure_score += 10
+                pressure_factors.append("GEX+ (mean reversion)")
+            elif gex_regime == 'negative':
+                pressure_score -= 10
+                pressure_factors.append("GEX- (momentum)")
 
-        # Distance to support levels (closer = more bullish)
-        support_levels = [l for l in [vanna_s1, vanna_s2, gex_support] if l and abs(l - current) / current <= 0.05]
-        resistance_levels = [l for l in [vanna_r1, vanna_r2, gex_resistance] if l and abs(l - current) / current <= 0.05]
+            # Price relative to GEX flip
+            if gex_flip and current:
+                if current > gex_flip:
+                    pressure_score += 15
+                    pressure_factors.append(f"Above GEX Flip (${gex_flip:.0f})")
+                else:
+                    pressure_score -= 15
+                    pressure_factors.append(f"Below GEX Flip (${gex_flip:.0f})")
 
-        if support_levels:
-            nearest_support = max(support_levels)
-            support_dist = (current - nearest_support) / current * 100
-            if support_dist < 0.5:  # Very close to support
-                pressure_score += 30
-                pressure_factors.append(f"Near support (${nearest_support:.0f})")
-            elif support_dist < 1.0:
-                pressure_score += 20
-                pressure_factors.append(f"Approaching support")
+            # Distance to support levels (closer = more bullish)
+            support_levels = [l for l in [vanna_s1, vanna_s2, gex_support] if l and abs(l - current) / current <= 0.05]
+            resistance_levels = [l for l in [vanna_r1, vanna_r2, gex_resistance] if l and abs(l - current) / current <= 0.05]
 
-        if resistance_levels:
-            nearest_resistance = min(resistance_levels)
-            resistance_dist = (nearest_resistance - current) / current * 100
-            if resistance_dist < 0.5:  # Very close to resistance
-                pressure_score -= 30
-                pressure_factors.append(f"Near resistance (${nearest_resistance:.0f})")
-            elif resistance_dist < 1.0:
-                pressure_score -= 20
-                pressure_factors.append(f"Approaching resistance")
+            if support_levels:
+                nearest_support = max(support_levels)
+                support_dist = (current - nearest_support) / current * 100
+                if support_dist < 0.5:  # Very close to support
+                    pressure_score += 30
+                    pressure_factors.append(f"Near support (${nearest_support:.0f})")
+                elif support_dist < 1.0:
+                    pressure_score += 20
+                    pressure_factors.append(f"Approaching support")
 
-        # Clamp score
-        pressure_score = max(-100, min(100, pressure_score))
+            if resistance_levels:
+                nearest_resistance = min(resistance_levels)
+                resistance_dist = (nearest_resistance - current) / current * 100
+                if resistance_dist < 0.5:  # Very close to resistance
+                    pressure_score -= 30
+                    pressure_factors.append(f"Near resistance (${nearest_resistance:.0f})")
+                elif resistance_dist < 1.0:
+                    pressure_score -= 20
+                    pressure_factors.append(f"Approaching resistance")
+
+            # Clamp score
+            pressure_score = max(-100, min(100, pressure_score))
 
         # Create gauge
         col1, col2 = st.columns([2, 1])
@@ -546,10 +555,51 @@ if 'predictions' in st.session_state:
                 st.warning("**NEUTRAL**")
                 st.caption("No clear pressure")
 
+            if pred.get('dealer_pressure_score') is not None:
+                st.caption("Derived from Tradier chain GEX/Vanna notionals, not raw tape flow.")
+
             # Show factors
             st.markdown("**Factors:**")
             for factor in pressure_factors[:4]:
                 st.caption(f"• {factor}")
+
+        # Surface the most impactful strikes for intraday trading
+        intraday_strikes = pred.get('intraday_strikes') or []
+        gamma_walls = pred.get('gamma_walls') or []
+        vanna_hotspots = pred.get('vanna_hotspots') or []
+
+        if intraday_strikes or gamma_walls or vanna_hotspots:
+            st.markdown("#### 🎯 Day-Trade Strikes to Watch")
+
+            if intraday_strikes:
+                strikes_df = pd.DataFrame(intraday_strikes)
+                strikes_df['distance_pct'] = strikes_df['distance_pct'].map(lambda x: f"{x:+.2f}%")
+                strikes_df.rename(columns={
+                    'strike': 'Strike',
+                    'net_gex': 'Net Gamma',
+                    'net_vanna': 'Net Vanna',
+                    'distance_pct': 'Vs Spot'
+                }, inplace=True)
+                st.dataframe(
+                    strikes_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            cols = st.columns(2)
+
+            with cols[0]:
+                if gamma_walls:
+                    st.caption("Top Gamma Walls (hedge pressure):")
+                    for wall in gamma_walls:
+                        direction = "Support" if wall['type'] == 'support' else "Resistance"
+                        st.write(f"${wall['strike']:.2f} → {direction} ({wall['net_gex']:+,.0f})")
+
+            with cols[1]:
+                if vanna_hotspots:
+                    st.caption("Largest Vanna Hotspots:")
+                    for hot in vanna_hotspots:
+                        st.write(f"${hot['strike']:.2f} → {hot['net_vanna']:+,.0f}")
 
         st.markdown("---")
 
