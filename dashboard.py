@@ -90,7 +90,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
-st.caption("Version 1.3.1 | Last Updated: 2025-11-28 - Removed target/stop levels, enhanced label visibility")
+st.caption("Version 1.3.2 | Last Updated: 2025-11-28 - Fixed label cutoff, 10-point level filtering")
 st.markdown("---")
 
 # Sidebar
@@ -614,8 +614,18 @@ if 'predictions' in st.session_state:
         gex_flip = pred.get('gex_zero_level')
 
         # Helper to check if level is within valid range of current price
-        def level_valid(level, pct=0.05):
-            return level and abs(level - current) / current <= pct
+        # Using absolute points instead of percentage for cleaner charts
+        def level_valid(level, max_points=10):
+            return level and abs(level - current) <= max_points
+
+        # Collect distant levels (beyond 10 points) for display below chart
+        distant_levels = []
+
+        def check_and_add_distant(level, name, level_type=""):
+            if level and not level_valid(level):
+                distance = abs(level - current)
+                direction = "above" if level > current else "below"
+                distant_levels.append(f"{name}: ${level:.2f} ({distance:.1f} points {direction}){level_type}")
 
         # Add RESISTANCE ZONE (red shaded area) - between Vanna R1 and GEX resistance
         resistance_top = None
@@ -784,6 +794,16 @@ if 'predictions' in st.session_state:
                 )
             )
 
+        # Check distant levels for all GEX and Vanna levels
+        gex_regime_text = " - Momentum Mode" if pred.get('gex_regime') == 'negative' else " - Mean Reversion Mode"
+        check_and_add_distant(gex_flip, "GEX FLIP", gex_regime_text if gex_flip else "")
+        check_and_add_distant(gex_support, "GEX SUPPORT", " - Dealers BUY")
+        check_and_add_distant(gex_resistance, "GEX RESISTANCE", " - Dealers SELL")
+        check_and_add_distant(vanna_r1, "VANNA R1", " - Resistance")
+        check_and_add_distant(vanna_r2, "VANNA R2", " - Resistance")
+        check_and_add_distant(vanna_s1, "VANNA S1", " - Support")
+        check_and_add_distant(vanna_s2, "VANNA S2", " - Support")
+
         # Add GEX (Gamma Exposure) hedge levels - only if within valid range
         if gex_flip and level_valid(gex_flip):
             fig.add_hline(
@@ -837,11 +857,11 @@ if 'predictions' in st.session_state:
             )
 
         # Calculate y-axis range centered on current price and all levels
-        # Only include levels within 5% of current price to avoid scaling issues
-        def is_valid_level(level, current_price, tolerance=0.05):
+        # Only include levels within 10 points to avoid scaling issues
+        def is_valid_level(level, current_price, max_points=10):
             if level is None:
                 return False
-            return abs(level - current_price) / current_price <= tolerance
+            return abs(level - current_price) <= max_points
 
         all_levels = [current]
         if pred_high and is_valid_level(pred_high, current):
@@ -926,7 +946,7 @@ if 'predictions' in st.session_state:
             template='plotly_dark',
             plot_bgcolor='rgba(0, 0, 0, 0)',
             paper_bgcolor='rgba(30, 30, 30, 1)',
-            margin=dict(l=50, r=120, t=80, b=50),
+            margin=dict(l=120, r=150, t=80, b=50),
             autosize=True
         )
 
@@ -938,11 +958,17 @@ if 'predictions' in st.session_state:
         # Improved chart legend with clear descriptions
         st.markdown("""
         **Chart Legend:**
-        - 🔵 **Entry** (Current Price) | 🎯 **Target** (Predicted High) | 🛑 **Stop** (Predicted Low)
-        - 🟠 **Vanna R** (Resistance - Dealers SELL) | 🟣 **Vanna S** (Support - Dealers BUY)
+        - 🔵 **Entry** (Current Price) | 🟠 **Vanna R** (Resistance) | 🟣 **Vanna S** (Support)
         - ⚡ **GEX Flip** (Regime Change) | 💚 **GEX Support** | 💜 **GEX Resistance**
         - 🟢 **BOUNCE ZONE** (Strong Support) | 🔴 **REJECTION ZONE** (Strong Resistance)
         """)
+
+        # Show distant levels (beyond 10 points from current price)
+        if distant_levels:
+            st.markdown("---")
+            st.markdown("**📍 Additional Levels (Beyond 10 Points):**")
+            for level_info in distant_levels:
+                st.caption(f"• {level_info}")
 
         # GEX Regime indicator
         if pred.get('gex_regime'):
