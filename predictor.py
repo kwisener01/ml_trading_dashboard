@@ -569,6 +569,11 @@ class TradingPredictor:
                 predictions['gex_current'] = gex_levels.get('current_gex')
                 predictions['gex_error'] = None
 
+                # High-impact strikes for day trading
+                predictions['gamma_walls'] = gex_levels.get('gamma_walls', [])
+                predictions['vanna_hotspots'] = gex_levels.get('vanna_hotspots', [])
+                predictions['intraday_strikes'] = gex_levels.get('intraday_strikes', [])
+
                 # REAL Vanna levels from options chain (0DTE/1DTE)
                 predictions['vanna_support_1'] = gex_levels.get('vanna_support_1')
                 predictions['vanna_support_1_strength'] = gex_levels.get('vanna_support_1_strength')
@@ -592,6 +597,9 @@ class TradingPredictor:
                 predictions['gex_regime'] = None
                 predictions['gex_current'] = None
                 predictions['gex_error'] = f"Empty results from GEX calculator (returned {len(gex_levels) if gex_levels else 0} keys)"
+                predictions['gamma_walls'] = []
+                predictions['vanna_hotspots'] = []
+                predictions['intraday_strikes'] = []
         except Exception as e:
             import traceback
             error_msg = str(e)
@@ -603,6 +611,9 @@ class TradingPredictor:
             predictions['gex_regime'] = None
             predictions['gex_current'] = None
             predictions['gex_error'] = error_msg
+            predictions['gamma_walls'] = []
+            predictions['vanna_hotspots'] = []
+            predictions['intraday_strikes'] = []
 
         # Options flow data (IV, Charm, Put/Call walls)
         try:
