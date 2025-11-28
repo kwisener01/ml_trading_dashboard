@@ -90,7 +90,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
-st.caption("Version 1.5.0 | Last Updated: 2025-11-28 - Zoomed chart with zones only, levels below")
+st.caption("Version 2.0.0 | Last Updated: 2025-11-28 - Time-to-target & options recommendations")
 st.markdown("---")
 
 # Sidebar
@@ -814,6 +814,84 @@ if 'predictions' in st.session_state:
             sorted_levels = sorted(all_levels_list, key=lambda x: float(x.split('$')[1].split(' ')[0]), reverse=True)
             for level_info in sorted_levels:
                 st.caption(f"• {level_info}")
+
+        # Time-to-Target Estimates (for day trading and options)
+        if pred.get('hours_to_rejection_zone') is not None or pred.get('hours_to_bounce_zone') is not None:
+            st.markdown("---")
+            st.markdown("### ⏱️ Time to Target")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if pred.get('hours_to_rejection_zone') is not None:
+                    hours = pred['hours_to_rejection_zone']
+                    prob = pred.get('prob_reach_rejection_today', 0)
+                    target = pred.get('rejection_zone_target', 0)
+                    distance_pct = pred.get('rejection_zone_distance_pct', 0)
+
+                    st.metric(
+                        label="🔴 Rejection Zone",
+                        value=f"${target:.2f}",
+                        delta=f"+{distance_pct:.2f}%"
+                    )
+                    if hours < 6.5:
+                        st.info(f"⏰ **{hours} hours** to reach\n\n📊 **{prob}%** probability by EOD")
+                    else:
+                        st.warning(f"⏰ **{hours} hours** to reach\n\n📊 Unlikely today ({prob}%)")
+
+            with col2:
+                if pred.get('hours_to_bounce_zone') is not None:
+                    hours = pred['hours_to_bounce_zone']
+                    prob = pred.get('prob_reach_bounce_today', 0)
+                    target = pred.get('bounce_zone_target', 0)
+                    distance_pct = pred.get('bounce_zone_distance_pct', 0)
+
+                    st.metric(
+                        label="🟢 Bounce Zone",
+                        value=f"${target:.2f}",
+                        delta=f"-{distance_pct:.2f}%"
+                    )
+                    if hours < 6.5:
+                        st.info(f"⏰ **{hours} hours** to reach\n\n📊 **{prob}%** probability by EOD")
+                    else:
+                        st.warning(f"⏰ **{hours} hours** to reach\n\n📊 Unlikely today ({prob}%)")
+
+            # Hours until market close
+            if pred.get('hours_until_close') is not None:
+                hours_left = pred['hours_until_close']
+                st.caption(f"🕐 Market closes in **{hours_left} hours**")
+
+        # Options Strategy Recommendations
+        if pred.get('options_primary'):
+            st.markdown("---")
+            st.markdown("### 📈 Options Strategy")
+
+            primary = pred['options_primary']
+            alternative = pred.get('options_alternative')
+
+            # Primary strategy
+            col1, col2, col3 = st.columns([2, 1, 1])
+
+            with col1:
+                direction_emoji = "📈" if primary['direction'] == 'CALL' else "📉"
+                st.markdown(f"#### {direction_emoji} {primary['direction']} ${primary['strike']}")
+                st.caption(primary['reason'])
+
+            with col2:
+                st.metric("Expiration", primary['expiration'])
+                st.caption(f"Exp: {primary['exp_date']}")
+
+            with col3:
+                st.metric("Expected Profit", f"${primary['expected_profit']}")
+                st.caption(f"{primary['probability']}% prob")
+
+            # Alternative strategy (if exists)
+            if alternative:
+                with st.expander("📊 Alternative Strategy"):
+                    alt_direction_emoji = "📈" if alternative['direction'] == 'CALL' else "📉"
+                    st.markdown(f"**{alt_direction_emoji} {alternative['direction']} ${alternative['strike']}** - {alternative['expiration']}")
+                    st.caption(alternative['reason'])
+                    st.caption(f"💰 Expected profit: **${alternative['expected_profit']}/contract** | {alternative['probability']}% probability")
 
         # GEX Regime indicator
         if pred.get('gex_regime'):

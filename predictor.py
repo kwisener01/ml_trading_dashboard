@@ -236,7 +236,226 @@ class TradingPredictor:
             }
 
         return flow_data
-    
+
+    def estimate_time_to_target(self, current_price, resistance_levels, support_levels,
+                                atr, volatility_rank, trend_strength):
+        """
+        Estimate time to reach bounce and rejection zones
+
+        For day trading and options:
+        - Returns hours to target
+        - Probability of reaching by end of day
+        - Accounts for volatility, momentum, time of day
+        """
+        from datetime import datetime
+        import pytz
+
+        # Filter out None values and find closest levels
+        resistance_levels = [r for r in resistance_levels if r and r > current_price]
+        support_levels = [s for s in support_levels if s and s < current_price]
+
+        results = {}
+
+        # Current time for intraday calculations
+        now = datetime.now(pytz.timezone('America/New_York'))
+        market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        hours_until_close = max(0, (market_close - now).seconds / 3600)
+
+        # Calculate for rejection zone (above current price)
+        if resistance_levels:
+            rejection_target = min(resistance_levels)  # Closest resistance
+            distance_points = rejection_target - current_price
+            distance_pct = distance_points / current_price
+
+            # Base time estimate using ATR (average true range)
+            # ATR represents typical daily movement
+            # Adjust for intraday: typically 60-70% of daily range happens in trading hours
+            intraday_factor = 0.65
+            moves_per_day = atr * intraday_factor if atr > 0 else current_price * 0.01
+            moves_per_hour = moves_per_day / 6.5  # 6.5 trading hours
+
+            # Base hours needed
+            if moves_per_hour > 0:
+                base_hours = distance_points / moves_per_hour
+            else:
+                base_hours = 999  # Unreachable
+
+            # Adjust for trend strength (stronger trend = faster)
+            trend_factor = 0.7 + (trend_strength / 100) * 0.6  # Range: 0.7 to 1.3
+            base_hours *= trend_factor
+
+            # Adjust for volatility (higher vol = faster moves)
+            vol_factor = 2.0 - volatility_rank  # Range: 1.0 to 2.0 (high vol = faster)
+            base_hours *= vol_factor
+
+            # Store rejection zone estimates
+            results['hours_to_rejection_zone'] = round(base_hours, 1)
+            results['rejection_zone_target'] = round(rejection_target, 2)
+            results['rejection_zone_distance_pct'] = round(distance_pct * 100, 2)
+
+            # Probability of reaching today
+            if hours_until_close > 0:
+                # Sigmoid function for probability
+                # P = 1 / (1 + exp(k * (hours_needed - hours_available)))
+                k = 0.5  # Steepness factor
+                import math
+                prob = 1 / (1 + math.exp(k * (base_hours - hours_until_close)))
+                results['prob_reach_rejection_today'] = round(prob * 100, 1)
+            else:
+                results['prob_reach_rejection_today'] = 0.0
+        else:
+            results['hours_to_rejection_zone'] = None
+            results['rejection_zone_target'] = None
+            results['rejection_zone_distance_pct'] = None
+            results['prob_reach_rejection_today'] = None
+
+        # Calculate for bounce zone (below current price)
+        if support_levels:
+            bounce_target = max(support_levels)  # Closest support
+            distance_points = current_price - bounce_target
+            distance_pct = distance_points / current_price
+
+            # Same calculation as above
+            intraday_factor = 0.65
+            moves_per_day = atr * intraday_factor if atr > 0 else current_price * 0.01
+            moves_per_hour = moves_per_day / 6.5
+
+            if moves_per_hour > 0:
+                base_hours = distance_points / moves_per_hour
+            else:
+                base_hours = 999
+
+            # Adjust for downward trend (inverse of trend strength for downside)
+            trend_factor = 0.7 + ((100 - trend_strength) / 100) * 0.6
+            base_hours *= trend_factor
+
+            vol_factor = 2.0 - volatility_rank
+            base_hours *= vol_factor
+
+            results['hours_to_bounce_zone'] = round(base_hours, 1)
+            results['bounce_zone_target'] = round(bounce_target, 2)
+            results['bounce_zone_distance_pct'] = round(distance_pct * 100, 2)
+
+            if hours_until_close > 0:
+                import math
+                k = 0.5
+                prob = 1 / (1 + math.exp(k * (base_hours - hours_until_close)))
+                results['prob_reach_bounce_today'] = round(prob * 100, 1)
+            else:
+                results['prob_reach_bounce_today'] = 0.0
+        else:
+            results['hours_to_bounce_zone'] = None
+            results['bounce_zone_target'] = None
+            results['bounce_zone_distance_pct'] = None
+            results['prob_reach_bounce_today'] = None
+
+        # Hours until market close
+        results['hours_until_close'] = round(hours_until_close, 1)
+
+        return results
+
+    def suggest_options_strategy(self, current_price, time_estimates, predictions):
+        """
+        Suggest options strikes and expirations for day trading / 0DTE
+
+        Based on:
+        - Time to reach zones
+        - Probability of reaching
+        - Current regime
+        """
+        from datetime import datetime, timedelta
+        import pytz
+
+        suggestions = []
+
+        # Get zone targets
+        rejection_target = time_estimates.get('rejection_zone_target')
+        bounce_target = time_estimates.get('bounce_zone_target')
+        hours_to_rejection = time_estimates.get('hours_to_rejection_zone')
+        hours_to_bounce = time_estimates.get('hours_to_bounce_zone')
+        prob_rejection = time_estimates.get('prob_reach_rejection_today', 0)
+        prob_bounce = time_estimates.get('prob_reach_bounce_today', 0)
+
+        # Determine expiration based on time needed
+        now = datetime.now(pytz.timezone('America/New_York'))
+        today = now.date()
+
+        # CALL strategy (bullish - rejection zone)
+        if rejection_target and hours_to_rejection:
+            # Suggest expiration
+            if hours_to_rejection <= 3:
+                expiration = "0DTE (Today)"
+                exp_date = today
+            elif hours_to_rejection <= 6.5:
+                expiration = "0DTE (Today)"
+                exp_date = today
+            else:
+                # Need more time - suggest 1DTE or weekly
+                expiration = "1-2 DTE or Weekly"
+                exp_date = today + timedelta(days=2)
+
+            # Strike selection
+            # For day trading: slightly OTM for better risk/reward
+            strike = round(rejection_target * 0.995 / 5) * 5  # Round to nearest $5
+
+            # Expected profit estimate (simplified)
+            distance_pct = time_estimates.get('rejection_zone_distance_pct', 0)
+            # Option delta approximation: ~0.4 for slight OTM
+            option_move = distance_pct * 0.4 * current_price
+            expected_profit_per_contract = round(option_move * 100, 0)  # x100 multiplier
+
+            suggestions.append({
+                'direction': 'CALL',
+                'strike': strike,
+                'expiration': expiration,
+                'exp_date': exp_date.strftime('%Y-%m-%d'),
+                'target': rejection_target,
+                'probability': prob_rejection,
+                'hours_to_target': hours_to_rejection,
+                'expected_profit': expected_profit_per_contract,
+                'reason': f"Rejection zone ${rejection_target:.2f} reachable in {hours_to_rejection}h ({prob_rejection}% prob)"
+            })
+
+        # PUT strategy (bearish - bounce zone)
+        if bounce_target and hours_to_bounce:
+            if hours_to_bounce <= 3:
+                expiration = "0DTE (Today)"
+                exp_date = today
+            elif hours_to_bounce <= 6.5:
+                expiration = "0DTE (Today)"
+                exp_date = today
+            else:
+                expiration = "1-2 DTE or Weekly"
+                exp_date = today + timedelta(days=2)
+
+            strike = round(bounce_target * 1.005 / 5) * 5
+
+            distance_pct = time_estimates.get('bounce_zone_distance_pct', 0)
+            option_move = distance_pct * 0.4 * current_price
+            expected_profit_per_contract = round(option_move * 100, 0)
+
+            suggestions.append({
+                'direction': 'PUT',
+                'strike': strike,
+                'expiration': expiration,
+                'exp_date': exp_date.strftime('%Y-%m-%d'),
+                'target': bounce_target,
+                'probability': prob_bounce,
+                'hours_to_target': hours_to_bounce,
+                'expected_profit': expected_profit_per_contract,
+                'reason': f"Bounce zone ${bounce_target:.2f} reachable in {hours_to_bounce}h ({prob_bounce}% prob)"
+            })
+
+        # Rank by probability and return top suggestion
+        if suggestions:
+            suggestions = sorted(suggestions, key=lambda x: x['probability'], reverse=True)
+            return {
+                'primary_strategy': suggestions[0],
+                'alternative_strategy': suggestions[1] if len(suggestions) > 1 else None
+            }
+        else:
+            return {'primary_strategy': None, 'alternative_strategy': None}
+
     def predict(self, symbol):
         """
         Make comprehensive trading prediction for a symbol
@@ -430,6 +649,55 @@ class TradingPredictor:
             predictions['call_wall'] = None
             predictions['dealer_flow_score'] = 0
             predictions['vanna_iv_trend'] = 0
+
+        # Calculate time-to-target estimates for zones
+        try:
+            time_estimates = self.estimate_time_to_target(
+                current_price=current_price,
+                resistance_levels=[predictions.get('vanna_resistance_1'),
+                                  predictions.get('vanna_resistance_2'),
+                                  predictions.get('gex_resistance')],
+                support_levels=[predictions.get('vanna_support_1'),
+                               predictions.get('vanna_support_2'),
+                               predictions.get('gex_support')],
+                atr=latest_full['atr'].iloc[0] if 'atr' in latest_full else current_price * 0.01,
+                volatility_rank=predictions.get('volatility_rank', 0.5),
+                trend_strength=predictions.get('trend_strength', 50)
+            )
+            predictions.update(time_estimates)
+            print(f"[INFO] Time-to-target estimates calculated:")
+            print(f"  - To Rejection Zone: {time_estimates.get('hours_to_rejection_zone')} hours")
+            print(f"  - To Bounce Zone: {time_estimates.get('hours_to_bounce_zone')} hours")
+
+            # Calculate options strategy recommendations
+            try:
+                options_strategy = self.suggest_options_strategy(
+                    current_price=current_price,
+                    time_estimates=time_estimates,
+                    predictions=predictions
+                )
+                predictions['options_primary'] = options_strategy.get('primary_strategy')
+                predictions['options_alternative'] = options_strategy.get('alternative_strategy')
+
+                if options_strategy.get('primary_strategy'):
+                    primary = options_strategy['primary_strategy']
+                    print(f"[INFO] Primary options strategy:")
+                    print(f"  - {primary['direction']} ${primary['strike']} {primary['expiration']}")
+                    print(f"  - Expected profit: ${primary['expected_profit']}/contract")
+                    print(f"  - Probability: {primary['probability']}%")
+            except Exception as e:
+                print(f"[WARNING] Could not calculate options strategy: {e}")
+                predictions['options_primary'] = None
+                predictions['options_alternative'] = None
+
+        except Exception as e:
+            print(f"[WARNING] Could not calculate time-to-target: {e}")
+            predictions['hours_to_rejection_zone'] = None
+            predictions['hours_to_bounce_zone'] = None
+            predictions['prob_reach_rejection_today'] = None
+            predictions['prob_reach_bounce_today'] = None
+            predictions['options_primary'] = None
+            predictions['options_alternative'] = None
 
         return predictions
     
