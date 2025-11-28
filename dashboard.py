@@ -90,7 +90,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
-st.caption("Version 1.3.2 | Last Updated: 2025-11-28 - Fixed label cutoff, 10-point level filtering")
+st.caption("Version 1.4.0 | Last Updated: 2025-11-28 - Repositioned labels inside chart like reference")
 st.markdown("---")
 
 # Sidebar
@@ -653,12 +653,13 @@ if 'predictions' in st.session_state:
             fig.add_annotation(
                 x=0.5, y=(resistance_top + resistance_bottom) / 2,
                 xref="paper", yref="y",
-                text="<b>REJECTION ZONE</b><br>Strong Resistance",
+                text="<b>REJECTION ZONE</b>",
                 showarrow=False,
-                font=dict(size=11, color="white"),
-                bgcolor="rgba(213, 0, 0, 0.9)",
+                font=dict(size=13, color="white", family="Arial Black"),
+                bgcolor="rgba(213, 0, 0, 0.85)",
                 bordercolor="white",
                 borderwidth=2,
+                borderpad=6,
                 xanchor="center",
                 yanchor="middle"
             )
@@ -689,12 +690,13 @@ if 'predictions' in st.session_state:
             fig.add_annotation(
                 x=0.5, y=(support_top + support_bottom) / 2,
                 xref="paper", yref="y",
-                text="<b>BOUNCE ZONE</b><br>Strong Support",
+                text="<b>BOUNCE ZONE</b>",
                 showarrow=False,
-                font=dict(size=11, color="white"),
-                bgcolor="rgba(0, 200, 83, 0.9)",
+                font=dict(size=13, color="white", family="Arial Black"),
+                bgcolor="rgba(0, 200, 83, 0.85)",
                 bordercolor="white",
                 borderwidth=2,
+                borderpad=6,
                 xanchor="center",
                 yanchor="middle"
             )
@@ -704,94 +706,107 @@ if 'predictions' in st.session_state:
             y=current,
             line_dash="solid",
             line_color="#2196F3",
-            line_width=3,
-            annotation_text=f"<b>CURRENT: ${current:.2f}</b>",
-            annotation_position="left",
-            annotation=dict(
-                font=dict(size=14, color="white", family="Arial Black"),
-                bgcolor="#2196F3",
-                bordercolor="white",
-                borderwidth=2,
-                borderpad=4
-            )
+            line_width=3
+        )
+        fig.add_annotation(
+            x=0.02, y=current,
+            xref="paper", yref="y",
+            text=f"<b>Current: ${current:.2f}</b>",
+            showarrow=False,
+            font=dict(size=12, color="#2196F3", family="Arial Bold"),
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            bordercolor="#2196F3",
+            borderwidth=2,
+            borderpad=4,
+            xanchor="left",
+            yanchor="middle"
         )
 
         # Add Vanna resistance levels (if available and valid) - Negative Vanna = Repellent
         if vanna_r1 and level_valid(vanna_r1):
             strength = pred.get('vanna_resistance_1_strength')
-            strength_text = f" ({abs(strength):.1f})" if strength else ""
             fig.add_hline(
                 y=vanna_r1,
                 line_dash="dash",
                 line_color="#FF9800",
-                line_width=2,
-                annotation_text=f"<b>VANNA R1: ${vanna_r1:.2f}</b>{strength_text}",
-                annotation_position="left",
-                annotation=dict(
-                    font=dict(size=11, color="white", family="Arial"),
-                    bgcolor="#FF6D00",
-                    bordercolor="white",
-                    borderwidth=2,
-                    borderpad=3
-                )
+                line_width=2
+            )
+            fig.add_annotation(
+                x=0.02, y=vanna_r1,
+                xref="paper", yref="y",
+                text=f"<b>Vanna R1: ${vanna_r1:.2f}</b>",
+                showarrow=False,
+                font=dict(size=11, color="#FF6D00", family="Arial Bold"),
+                bgcolor="rgba(255, 255, 255, 0.9)",
+                bordercolor="#FF9800",
+                borderwidth=1,
+                borderpad=3,
+                xanchor="left",
+                yanchor="middle"
             )
 
         if vanna_r2 and level_valid(vanna_r2):
-            strength = pred.get('vanna_resistance_2_strength')
-            strength_text = f" ({abs(strength):.1f})" if strength else ""
             fig.add_hline(
                 y=vanna_r2,
                 line_dash="dash",
                 line_color="#FFB74D",
-                line_width=1,
-                annotation_text=f"<b>VANNA R2: ${vanna_r2:.2f}</b>{strength_text}",
-                annotation_position="left",
-                annotation=dict(
-                    font=dict(size=10, color="white", family="Arial"),
-                    bgcolor="#FF8F00",
-                    bordercolor="white",
-                    borderwidth=2,
-                    borderpad=3
-                )
+                line_width=1
+            )
+            fig.add_annotation(
+                x=0.02, y=vanna_r2,
+                xref="paper", yref="y",
+                text=f"<b>Vanna R2: ${vanna_r2:.2f}</b>",
+                showarrow=False,
+                font=dict(size=10, color="#FF8F00", family="Arial Bold"),
+                bgcolor="rgba(255, 255, 255, 0.85)",
+                bordercolor="#FFB74D",
+                borderwidth=1,
+                borderpad=2,
+                xanchor="left",
+                yanchor="middle"
             )
 
         # Add Vanna support levels (if available and valid) - Positive Vanna = Attractor
         if vanna_s1 and level_valid(vanna_s1):
-            strength = pred.get('vanna_support_1_strength')
-            strength_text = f" ({abs(strength):.1f})" if strength else ""
             fig.add_hline(
                 y=vanna_s1,
                 line_dash="dash",
                 line_color="#9C27B0",
-                line_width=2,
-                annotation_text=f"<b>VANNA S1: ${vanna_s1:.2f}</b>{strength_text}",
-                annotation_position="left",
-                annotation=dict(
-                    font=dict(size=11, color="white", family="Arial"),
-                    bgcolor="#7B1FA2",
-                    bordercolor="white",
-                    borderwidth=2,
-                    borderpad=3
-                )
+                line_width=2
+            )
+            fig.add_annotation(
+                x=0.02, y=vanna_s1,
+                xref="paper", yref="y",
+                text=f"<b>Vanna S1: ${vanna_s1:.2f}</b>",
+                showarrow=False,
+                font=dict(size=11, color="#7B1FA2", family="Arial Bold"),
+                bgcolor="rgba(255, 255, 255, 0.9)",
+                bordercolor="#9C27B0",
+                borderwidth=1,
+                borderpad=3,
+                xanchor="left",
+                yanchor="middle"
             )
 
         if vanna_s2 and level_valid(vanna_s2):
-            strength = pred.get('vanna_support_2_strength')
-            strength_text = f" ({abs(strength):.1f})" if strength else ""
             fig.add_hline(
                 y=vanna_s2,
                 line_dash="dash",
                 line_color="#CE93D8",
-                line_width=1,
-                annotation_text=f"<b>VANNA S2: ${vanna_s2:.2f}</b>{strength_text}",
-                annotation_position="left",
-                annotation=dict(
-                    font=dict(size=10, color="white", family="Arial"),
-                    bgcolor="#9C27B0",
-                    bordercolor="white",
-                    borderwidth=2,
-                    borderpad=3
-                )
+                line_width=1
+            )
+            fig.add_annotation(
+                x=0.02, y=vanna_s2,
+                xref="paper", yref="y",
+                text=f"<b>Vanna S2: ${vanna_s2:.2f}</b>",
+                showarrow=False,
+                font=dict(size=10, color="#9C27B0", family="Arial Bold"),
+                bgcolor="rgba(255, 255, 255, 0.85)",
+                bordercolor="#CE93D8",
+                borderwidth=1,
+                borderpad=2,
+                xanchor="left",
+                yanchor="middle"
             )
 
         # Check distant levels for all GEX and Vanna levels
@@ -806,20 +821,25 @@ if 'predictions' in st.session_state:
 
         # Add GEX (Gamma Exposure) hedge levels - only if within valid range
         if gex_flip and level_valid(gex_flip):
+            regime_text = "Below GEX Flip = Momentum Mode<br>Above GEX Flip = Mean Reversion"
             fig.add_hline(
                 y=gex_flip,
                 line_dash="dashdot",
                 line_color="#00BCD4",
-                line_width=3,
-                annotation_text=f"<b>GEX FLIP: ${gex_flip:.2f}</b>",
-                annotation_position="right",
-                annotation=dict(
-                    font=dict(size=12, color="white", family="Arial"),
-                    bgcolor="#00838F",
-                    bordercolor="white",
-                    borderwidth=2,
-                    borderpad=4
-                )
+                line_width=3
+            )
+            fig.add_annotation(
+                x=0.98, y=gex_flip,
+                xref="paper", yref="y",
+                text=regime_text,
+                showarrow=False,
+                font=dict(size=9, color="black", family="Arial"),
+                bgcolor="rgba(255, 255, 200, 0.9)",
+                bordercolor="orange",
+                borderwidth=1,
+                borderpad=3,
+                xanchor="right",
+                yanchor="middle"
             )
 
         if gex_support and level_valid(gex_support):
@@ -827,16 +847,20 @@ if 'predictions' in st.session_state:
                 y=gex_support,
                 line_dash="dot",
                 line_color="#76FF03",
-                line_width=2,
-                annotation_text=f"<b>GEX SUPPORT: ${gex_support:.0f}</b><br>Dealers BUY",
-                annotation_position="right",
-                annotation=dict(
-                    font=dict(size=11, color="white", family="Arial"),
-                    bgcolor="#33691E",
-                    bordercolor="white",
-                    borderwidth=2,
-                    borderpad=3
-                )
+                line_width=2
+            )
+            fig.add_annotation(
+                x=0.98, y=gex_support,
+                xref="paper", yref="y",
+                text=f"<b>GEX Support: ${gex_support:.0f}</b><br>Dealers BUY",
+                showarrow=False,
+                font=dict(size=10, color="#33691E", family="Arial Bold"),
+                bgcolor="rgba(255, 255, 255, 0.9)",
+                bordercolor="#76FF03",
+                borderwidth=1,
+                borderpad=3,
+                xanchor="right",
+                yanchor="middle"
             )
 
         if gex_resistance and level_valid(gex_resistance):
@@ -844,16 +868,20 @@ if 'predictions' in st.session_state:
                 y=gex_resistance,
                 line_dash="dot",
                 line_color="#E040FB",
-                line_width=2,
-                annotation_text=f"<b>GEX RESISTANCE: ${gex_resistance:.0f}</b><br>Dealers SELL",
-                annotation_position="right",
-                annotation=dict(
-                    font=dict(size=11, color="white", family="Arial"),
-                    bgcolor="#6A1B9A",
-                    bordercolor="white",
-                    borderwidth=2,
-                    borderpad=3
-                )
+                line_width=2
+            )
+            fig.add_annotation(
+                x=0.98, y=gex_resistance,
+                xref="paper", yref="y",
+                text=f"<b>GEX Resistance: ${gex_resistance:.0f}</b><br>Dealers SELL",
+                showarrow=False,
+                font=dict(size=10, color="#6A1B9A", family="Arial Bold"),
+                bgcolor="rgba(255, 255, 255, 0.9)",
+                bordercolor="#E040FB",
+                borderwidth=1,
+                borderpad=3,
+                xanchor="right",
+                yanchor="middle"
             )
 
         # Calculate y-axis range centered on current price and all levels
@@ -895,23 +923,6 @@ if 'predictions' in st.session_state:
             center = (y_max + y_min) / 2
             y_min = center - min_range / 2
             y_max = center + min_range / 2
-
-        # Add GEX regime annotation box (like in reference image)
-        if gex_flip:
-            regime_text = "Below GEX Flip = Momentum Mode<br>Above GEX Flip = Mean Reversion"
-            fig.add_annotation(
-                x=1.0,
-                y=gex_flip,
-                xref="paper",
-                yref="y",
-                text=regime_text,
-                showarrow=False,
-                font=dict(size=9, color="black"),
-                bgcolor="rgba(255, 255, 200, 0.9)",
-                bordercolor="orange",
-                borderwidth=1,
-                xanchor="right"
-            )
 
         fig.update_layout(
             title=dict(
