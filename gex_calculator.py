@@ -274,6 +274,10 @@ class GEXCalculator:
             spot_price,
         )
 
+        # Preserve the full curves so the dashboard can plot a strike-level overlay
+        key_levels['gex_curve'] = gex_by_strike.sort_values('strike').to_dict('records')
+        key_levels['vanna_curve'] = vanna_by_strike.sort_values('strike').to_dict('records')
+
         # Add metadata
         key_levels['spot_price'] = spot_price
         key_levels['expiration'] = expiration

@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import json
 from predictor import TradingPredictor
@@ -849,6 +850,121 @@ if 'predictions' in st.session_state:
         fig.update_xaxes(rangeslider_visible=False)
 
         st.plotly_chart(fig, use_container_width=True)
+
+        # Strike-level hedge map overlay (gamma, vanna, and key levels)
+        gex_curve = pred.get('gex_curve') or []
+        vanna_curve = pred.get('vanna_curve') or []
+
+        if gex_curve or vanna_curve:
+            st.markdown("### 🧭 Strike Hedge Map (Gamma & Vanna)")
+            st.caption("Notional exposures in millions to mirror a TradingView-style overlay of key levels.")
+
+            fig_levels = make_subplots(specs=[[{"secondary_y": True}]])
+
+            if gex_curve:
+                gex_curve_df = pd.DataFrame(gex_curve).sort_values('strike')
+                gex_curve_df['net_gex_m'] = gex_curve_df['net_gex'] / 1e6
+                fig_levels.add_trace(
+                    go.Bar(
+                        x=gex_curve_df['strike'],
+                        y=gex_curve_df['net_gex_m'],
+                        name="Net Gamma (GEX)",
+                        marker_color='rgba(0, 230, 118, 0.6)',
+                        hovertemplate="Strike: $%{x}<br>Gamma: %{y:.2f}M"
+                    ),
+                    secondary_y=False,
+                )
+
+            if vanna_curve:
+                vanna_df = pd.DataFrame(vanna_curve).sort_values('strike')
+                vanna_df['net_vanna_m'] = vanna_df['net_vanna'] / 1e6
+                fig_levels.add_trace(
+                    go.Scatter(
+                        x=vanna_df['strike'],
+                        y=vanna_df['net_vanna_m'],
+                        mode='lines+markers',
+                        name="Net Vanna",
+                        line=dict(color='#90CAF9', width=2),
+                        marker=dict(size=6),
+                        hovertemplate="Strike: $%{x}<br>Vanna: %{y:.2f}M"
+                    ),
+                    secondary_y=True,
+                )
+
+            # Overlay key levels and current price for context
+            level_lines = [
+                (gex_flip, "Gamma Flip", "#FFC107", "dot"),
+                (gex_support, "GEX Support", "#4CAF50", "dash"),
+                (gex_resistance, "GEX Resistance", "#E53935", "dash"),
+                (vanna_s1, "Vanna S1", "#8E24AA", "dot"),
+                (vanna_s2, "Vanna S2", "#6A1B9A", "dot"),
+                (vanna_r1, "Vanna R1", "#FF7043", "dot"),
+                (vanna_r2, "Vanna R2", "#F4511E", "dot"),
+            ]
+
+            for strike_value, label, color, dash in level_lines:
+                if strike_value:
+                    fig_levels.add_vline(
+                        x=strike_value,
+                        line_color=color,
+                        line_dash=dash,
+                        annotation_text=label,
+                        annotation_position="top right"
+                    )
+
+            fig_levels.add_vline(
+                x=current,
+                line_color="#2196F3",
+                line_width=3,
+                annotation_text="Spot",
+                annotation_position="top right"
+            )
+
+            for wall in gamma_walls:
+                fig_levels.add_vline(
+                    x=wall['strike'],
+                    line_color="#00E676" if wall['type'] == 'support' else "#FF5252",
+                    line_dash="solid",
+                    annotation_text=f"Gamma {wall['type'].title()}",
+                    annotation_position="bottom right"
+                )
+
+            for hot in vanna_hotspots:
+                fig_levels.add_trace(
+                    go.Scatter(
+                        x=[hot['strike']],
+                        y=[hot['net_vanna'] / 1e6],
+                        mode='markers+text',
+                        name="Vanna Hotspot",
+                        text=[f"{hot['net_vanna']/1e6:.1f}M"],
+                        textposition="top center",
+                        marker=dict(color="#FFD54F", size=10, symbol="diamond"),
+                    ),
+                    secondary_y=True,
+                )
+
+            fig_levels.update_layout(
+                title=dict(
+                    text=f"<b>{symbol} Options Hedge Map</b>",
+                    x=0.5,
+                    font=dict(size=15)
+                ),
+                barmode='relative',
+                bargap=0.02,
+                height=520,
+                template='plotly_dark',
+                hovermode='x unified',
+                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0),
+                margin=dict(l=80, r=80, t=60, b=50),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(30,30,30,1)'
+            )
+
+            fig_levels.update_xaxes(title_text="Strike ($)")
+            fig_levels.update_yaxes(title_text="Net Gamma (Millions $ Notional)", secondary_y=False)
+            fig_levels.update_yaxes(title_text="Net Vanna (Millions $ Notional)", secondary_y=True)
+
+            st.plotly_chart(fig_levels, use_container_width=True)
 
         # Chart shows only zones and current price
         st.markdown("""

@@ -550,6 +550,8 @@ class TradingPredictor:
         predictions['vanna_resistance_2_strength'] = None
         predictions['dealer_pressure_score'] = None
         predictions['dealer_pressure_factors'] = []
+        predictions['gex_curve'] = []
+        predictions['vanna_curve'] = []
 
         # GEX (Gamma Exposure) levels for hedge pressure
         try:
@@ -593,6 +595,8 @@ class TradingPredictor:
                 predictions['vanna_resistance_1_strength'] = gex_levels.get('vanna_resistance_1_strength')
                 predictions['vanna_resistance_2'] = gex_levels.get('vanna_resistance_2')
                 predictions['vanna_resistance_2_strength'] = gex_levels.get('vanna_resistance_2_strength')
+                predictions['gex_curve'] = gex_levels.get('gex_curve', [])
+                predictions['vanna_curve'] = gex_levels.get('vanna_curve', [])
 
                 print(f"  - Gamma Flip: {predictions['gex_zero_level']}")
                 print(f"  - GEX Support: {predictions['gex_support']}")
@@ -610,6 +614,8 @@ class TradingPredictor:
                 predictions['gamma_walls'] = []
                 predictions['vanna_hotspots'] = []
                 predictions['intraday_strikes'] = []
+                predictions['gex_curve'] = []
+                predictions['vanna_curve'] = []
         except Exception as e:
             import traceback
             error_msg = str(e)
@@ -624,6 +630,8 @@ class TradingPredictor:
             predictions['gamma_walls'] = []
             predictions['vanna_hotspots'] = []
             predictions['intraday_strikes'] = []
+            predictions['gex_curve'] = []
+            predictions['vanna_curve'] = []
 
         # Options flow data (IV, Charm, Put/Call walls)
         try:
