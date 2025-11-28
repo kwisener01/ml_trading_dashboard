@@ -24,6 +24,10 @@ st.set_page_config(
     layout="wide"
 )
 
+# Dashboard metadata
+VERSION = "2.1.0"
+last_updated_display = datetime.now(EST).strftime("%Y-%m-%d %H:%M %Z")
+
 # Auto-download latest models from S3 on startup
 @st.cache_resource(ttl=3600)  # Cache for 1 hour
 def ensure_latest_models():
@@ -90,7 +94,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
-st.caption("Version 2.0.0 | Last Updated: 2025-11-28 - Time-to-target & options recommendations")
+st.caption(f"Version {VERSION} | Last Updated: {last_updated_display}")
 st.markdown("---")
 
 # Sidebar
@@ -550,6 +554,44 @@ if 'predictions' in st.session_state:
             st.markdown("**Factors:**")
             for factor in pressure_factors[:4]:
                 st.caption(f"• {factor}")
+
+        # Surface the most impactful strikes for intraday trading
+        intraday_strikes = pred.get('intraday_strikes') or []
+        gamma_walls = pred.get('gamma_walls') or []
+        vanna_hotspots = pred.get('vanna_hotspots') or []
+
+        if intraday_strikes or gamma_walls or vanna_hotspots:
+            st.markdown("#### 🎯 Day-Trade Strikes to Watch")
+
+            if intraday_strikes:
+                strikes_df = pd.DataFrame(intraday_strikes)
+                strikes_df['distance_pct'] = strikes_df['distance_pct'].map(lambda x: f"{x:+.2f}%")
+                strikes_df.rename(columns={
+                    'strike': 'Strike',
+                    'net_gex': 'Net Gamma',
+                    'net_vanna': 'Net Vanna',
+                    'distance_pct': 'Vs Spot'
+                }, inplace=True)
+                st.dataframe(
+                    strikes_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            cols = st.columns(2)
+
+            with cols[0]:
+                if gamma_walls:
+                    st.caption("Top Gamma Walls (hedge pressure):")
+                    for wall in gamma_walls:
+                        direction = "Support" if wall['type'] == 'support' else "Resistance"
+                        st.write(f"${wall['strike']:.2f} → {direction} ({wall['net_gex']:+,.0f})")
+
+            with cols[1]:
+                if vanna_hotspots:
+                    st.caption("Largest Vanna Hotspots:")
+                    for hot in vanna_hotspots:
+                        st.write(f"${hot['strike']:.2f} → {hot['net_vanna']:+,.0f}")
 
         st.markdown("---")
 
