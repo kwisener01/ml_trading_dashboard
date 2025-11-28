@@ -264,6 +264,20 @@ class GEXCalculator:
         vanna_levels = self._find_vanna_levels(vanna_by_strike, spot_price)
         key_levels.update(vanna_levels)
 
+        # Add wall/hotspot context so the dashboard can surface the
+        # highest-impact strikes for intraday trading
+        key_levels['gamma_walls'] = self._build_gamma_walls(gex_by_strike)
+        key_levels['vanna_hotspots'] = self._build_vanna_hotspots(vanna_by_strike)
+        key_levels['intraday_strikes'] = self._build_intraday_watchlist(
+            gex_by_strike,
+            vanna_by_strike,
+            spot_price,
+        )
+
+        # Preserve the full curves so the dashboard can plot a strike-level overlay
+        key_levels['gex_curve'] = gex_by_strike.sort_values('strike').to_dict('records')
+        key_levels['vanna_curve'] = vanna_by_strike.sort_values('strike').to_dict('records')
+
         # Add metadata
         key_levels['spot_price'] = spot_price
         key_levels['expiration'] = expiration
@@ -359,6 +373,77 @@ class GEXCalculator:
             'vanna_resistance_2': vanna_resistance_2,
             'vanna_resistance_2_strength': vanna_resistance_2_strength
         }
+
+    def _build_gamma_walls(self, gex_df, top_n: int = 5):
+        """Return the biggest positive/negative gamma strikes."""
+
+        if gex_df.empty:
+            return []
+
+        gamma_sorted = gex_df.assign(abs_gex=gex_df['net_gex'].abs())
+        gamma_sorted = gamma_sorted.sort_values('abs_gex', ascending=False)
+
+        walls = []
+        for _, row in gamma_sorted.head(top_n).iterrows():
+            walls.append({
+                'strike': float(row['strike']),
+                'net_gex': float(row['net_gex']),
+                'type': 'support' if row['net_gex'] > 0 else 'resistance'
+            })
+
+        return walls
+
+    def _build_vanna_hotspots(self, vanna_df, top_n: int = 5):
+        """Return the largest vanna exposures by strike."""
+
+        if vanna_df.empty:
+            return []
+
+        vanna_sorted = vanna_df.assign(abs_vanna=vanna_df['net_vanna'].abs())
+        vanna_sorted = vanna_sorted.sort_values('abs_vanna', ascending=False)
+
+        hotspots = []
+        for _, row in vanna_sorted.head(top_n).iterrows():
+            hotspots.append({
+                'strike': float(row['strike']),
+                'net_vanna': float(row['net_vanna'])
+            })
+
+        return hotspots
+
+    def _build_intraday_watchlist(self, gex_df, vanna_df, spot_price: float,
+                                  window_pct: float = 0.03, top_n: int = 6):
+        """
+        Surface the strikes most likely to matter for day trading.
+
+        We prioritize strikes within a tight band (default ±3%) around spot
+        and rank them by the combined magnitude of gamma and vanna exposure.
+        """
+
+        if gex_df.empty and vanna_df.empty:
+            return []
+
+        merged = pd.merge(gex_df, vanna_df, on='strike', how='outer').fillna(0)
+        merged['distance_pct'] = (merged['strike'] - spot_price) / spot_price * 100
+        merged['impact_score'] = merged['net_gex'].abs() + merged['net_vanna'].abs()
+
+        # Focus on nearby strikes first, then fall back to top impacts overall
+        nearby = merged[merged['distance_pct'].abs() <= window_pct * 100]
+        if nearby.empty:
+            nearby = merged
+
+        watchlist = nearby.sort_values('impact_score', ascending=False).head(top_n)
+
+        strikes = []
+        for _, row in watchlist.iterrows():
+            strikes.append({
+                'strike': float(row['strike']),
+                'net_gex': float(row.get('net_gex', 0)),
+                'net_vanna': float(row.get('net_vanna', 0)),
+                'distance_pct': float(row['distance_pct'])
+            })
+
+        return strikes
 
     def print_levels(self, symbol='SPY'):
         """Print GEX levels in a readable format."""
