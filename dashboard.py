@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import json
 from predictor import TradingPredictor
@@ -23,6 +24,10 @@ st.set_page_config(
     page_icon="📈",
     layout="wide"
 )
+
+# Dashboard metadata
+VERSION = "2.1.0"
+last_updated_display = datetime.now(EST).strftime("%Y-%m-%d %H:%M %Z")
 
 # Auto-download latest models from S3 on startup
 @st.cache_resource(ttl=3600)  # Cache for 1 hour
@@ -90,7 +95,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
-st.caption("Version 2.0.0 | Last Updated: 2025-11-28 - Time-to-target & options recommendations")
+st.caption(f"Version {VERSION} | Last Updated: {last_updated_display}")
 st.markdown("---")
 
 # Sidebar
@@ -426,66 +431,71 @@ if 'predictions' in st.session_state:
         st.markdown("---")
         st.subheader("⚡ Net Hedge Pressure")
 
-        # Calculate hedge pressure based on price proximity to levels
-        current = pred['current_price']
+        # Prefer dealer pressure derived from notional GEX/Vanna; fall back to
+        # proximity-based heuristic if not available
+        pressure_score = pred.get('dealer_pressure_score')
+        pressure_factors = pred.get('dealer_pressure_factors') or []
 
-        # Get all levels
-        vanna_s1 = pred.get('vanna_support_1')
-        vanna_s2 = pred.get('vanna_support_2')
-        vanna_r1 = pred.get('vanna_resistance_1')
-        vanna_r2 = pred.get('vanna_resistance_2')
-        gex_support = pred.get('gex_support')
-        gex_resistance = pred.get('gex_resistance')
-        gex_flip = pred.get('gex_zero_level')
-        gex_regime = pred.get('gex_regime', 'unknown')
+        if pressure_score is None:
+            # Calculate hedge pressure based on price proximity to levels
+            current = pred['current_price']
 
-        # Calculate pressure score (-100 to +100)
-        pressure_score = 0
-        pressure_factors = []
+            # Get all levels
+            vanna_s1 = pred.get('vanna_support_1')
+            vanna_s2 = pred.get('vanna_support_2')
+            vanna_r1 = pred.get('vanna_resistance_1')
+            vanna_r2 = pred.get('vanna_resistance_2')
+            gex_support = pred.get('gex_support')
+            gex_resistance = pred.get('gex_resistance')
+            gex_flip = pred.get('gex_zero_level')
+            gex_regime = pred.get('gex_regime', 'unknown')
 
-        # GEX regime factor
-        if gex_regime == 'positive':
-            pressure_score += 10
-            pressure_factors.append("GEX+ (mean reversion)")
-        elif gex_regime == 'negative':
-            pressure_score -= 10
-            pressure_factors.append("GEX- (momentum)")
+            # Calculate pressure score (-100 to +100)
+            pressure_score = 0
 
-        # Price relative to GEX flip
-        if gex_flip and current:
-            if current > gex_flip:
-                pressure_score += 15
-                pressure_factors.append(f"Above GEX Flip (${gex_flip:.0f})")
-            else:
-                pressure_score -= 15
-                pressure_factors.append(f"Below GEX Flip (${gex_flip:.0f})")
+            # GEX regime factor
+            if gex_regime == 'positive':
+                pressure_score += 10
+                pressure_factors.append("GEX+ (mean reversion)")
+            elif gex_regime == 'negative':
+                pressure_score -= 10
+                pressure_factors.append("GEX- (momentum)")
 
-        # Distance to support levels (closer = more bullish)
-        support_levels = [l for l in [vanna_s1, vanna_s2, gex_support] if l and abs(l - current) / current <= 0.05]
-        resistance_levels = [l for l in [vanna_r1, vanna_r2, gex_resistance] if l and abs(l - current) / current <= 0.05]
+            # Price relative to GEX flip
+            if gex_flip and current:
+                if current > gex_flip:
+                    pressure_score += 15
+                    pressure_factors.append(f"Above GEX Flip (${gex_flip:.0f})")
+                else:
+                    pressure_score -= 15
+                    pressure_factors.append(f"Below GEX Flip (${gex_flip:.0f})")
 
-        if support_levels:
-            nearest_support = max(support_levels)
-            support_dist = (current - nearest_support) / current * 100
-            if support_dist < 0.5:  # Very close to support
-                pressure_score += 30
-                pressure_factors.append(f"Near support (${nearest_support:.0f})")
-            elif support_dist < 1.0:
-                pressure_score += 20
-                pressure_factors.append(f"Approaching support")
+            # Distance to support levels (closer = more bullish)
+            support_levels = [l for l in [vanna_s1, vanna_s2, gex_support] if l and abs(l - current) / current <= 0.05]
+            resistance_levels = [l for l in [vanna_r1, vanna_r2, gex_resistance] if l and abs(l - current) / current <= 0.05]
 
-        if resistance_levels:
-            nearest_resistance = min(resistance_levels)
-            resistance_dist = (nearest_resistance - current) / current * 100
-            if resistance_dist < 0.5:  # Very close to resistance
-                pressure_score -= 30
-                pressure_factors.append(f"Near resistance (${nearest_resistance:.0f})")
-            elif resistance_dist < 1.0:
-                pressure_score -= 20
-                pressure_factors.append(f"Approaching resistance")
+            if support_levels:
+                nearest_support = max(support_levels)
+                support_dist = (current - nearest_support) / current * 100
+                if support_dist < 0.5:  # Very close to support
+                    pressure_score += 30
+                    pressure_factors.append(f"Near support (${nearest_support:.0f})")
+                elif support_dist < 1.0:
+                    pressure_score += 20
+                    pressure_factors.append(f"Approaching support")
 
-        # Clamp score
-        pressure_score = max(-100, min(100, pressure_score))
+            if resistance_levels:
+                nearest_resistance = min(resistance_levels)
+                resistance_dist = (nearest_resistance - current) / current * 100
+                if resistance_dist < 0.5:  # Very close to resistance
+                    pressure_score -= 30
+                    pressure_factors.append(f"Near resistance (${nearest_resistance:.0f})")
+                elif resistance_dist < 1.0:
+                    pressure_score -= 20
+                    pressure_factors.append(f"Approaching resistance")
+
+            # Clamp score
+            pressure_score = max(-100, min(100, pressure_score))
 
         # Create gauge
         col1, col2 = st.columns([2, 1])
@@ -546,10 +556,51 @@ if 'predictions' in st.session_state:
                 st.warning("**NEUTRAL**")
                 st.caption("No clear pressure")
 
+            if pred.get('dealer_pressure_score') is not None:
+                st.caption("Derived from Tradier chain GEX/Vanna notionals, not raw tape flow.")
+
             # Show factors
             st.markdown("**Factors:**")
             for factor in pressure_factors[:4]:
                 st.caption(f"• {factor}")
+
+        # Surface the most impactful strikes for intraday trading
+        intraday_strikes = pred.get('intraday_strikes') or []
+        gamma_walls = pred.get('gamma_walls') or []
+        vanna_hotspots = pred.get('vanna_hotspots') or []
+
+        if intraday_strikes or gamma_walls or vanna_hotspots:
+            st.markdown("#### 🎯 Day-Trade Strikes to Watch")
+
+            if intraday_strikes:
+                strikes_df = pd.DataFrame(intraday_strikes)
+                strikes_df['distance_pct'] = strikes_df['distance_pct'].map(lambda x: f"{x:+.2f}%")
+                strikes_df.rename(columns={
+                    'strike': 'Strike',
+                    'net_gex': 'Net Gamma',
+                    'net_vanna': 'Net Vanna',
+                    'distance_pct': 'Vs Spot'
+                }, inplace=True)
+                st.dataframe(
+                    strikes_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            cols = st.columns(2)
+
+            with cols[0]:
+                if gamma_walls:
+                    st.caption("Top Gamma Walls (hedge pressure):")
+                    for wall in gamma_walls:
+                        direction = "Support" if wall['type'] == 'support' else "Resistance"
+                        st.write(f"${wall['strike']:.2f} → {direction} ({wall['net_gex']:+,.0f})")
+
+            with cols[1]:
+                if vanna_hotspots:
+                    st.caption("Largest Vanna Hotspots:")
+                    for hot in vanna_hotspots:
+                        st.write(f"${hot['strike']:.2f} → {hot['net_vanna']:+,.0f}")
 
         st.markdown("---")
 
@@ -799,6 +850,121 @@ if 'predictions' in st.session_state:
         fig.update_xaxes(rangeslider_visible=False)
 
         st.plotly_chart(fig, use_container_width=True)
+
+        # Strike-level hedge map overlay (gamma, vanna, and key levels)
+        gex_curve = pred.get('gex_curve') or []
+        vanna_curve = pred.get('vanna_curve') or []
+
+        if gex_curve or vanna_curve:
+            st.markdown("### 🧭 Strike Hedge Map (Gamma & Vanna)")
+            st.caption("Notional exposures in millions to mirror a TradingView-style overlay of key levels.")
+
+            fig_levels = make_subplots(specs=[[{"secondary_y": True}]])
+
+            if gex_curve:
+                gex_curve_df = pd.DataFrame(gex_curve).sort_values('strike')
+                gex_curve_df['net_gex_m'] = gex_curve_df['net_gex'] / 1e6
+                fig_levels.add_trace(
+                    go.Bar(
+                        x=gex_curve_df['strike'],
+                        y=gex_curve_df['net_gex_m'],
+                        name="Net Gamma (GEX)",
+                        marker_color='rgba(0, 230, 118, 0.6)',
+                        hovertemplate="Strike: $%{x}<br>Gamma: %{y:.2f}M"
+                    ),
+                    secondary_y=False,
+                )
+
+            if vanna_curve:
+                vanna_df = pd.DataFrame(vanna_curve).sort_values('strike')
+                vanna_df['net_vanna_m'] = vanna_df['net_vanna'] / 1e6
+                fig_levels.add_trace(
+                    go.Scatter(
+                        x=vanna_df['strike'],
+                        y=vanna_df['net_vanna_m'],
+                        mode='lines+markers',
+                        name="Net Vanna",
+                        line=dict(color='#90CAF9', width=2),
+                        marker=dict(size=6),
+                        hovertemplate="Strike: $%{x}<br>Vanna: %{y:.2f}M"
+                    ),
+                    secondary_y=True,
+                )
+
+            # Overlay key levels and current price for context
+            level_lines = [
+                (gex_flip, "Gamma Flip", "#FFC107", "dot"),
+                (gex_support, "GEX Support", "#4CAF50", "dash"),
+                (gex_resistance, "GEX Resistance", "#E53935", "dash"),
+                (vanna_s1, "Vanna S1", "#8E24AA", "dot"),
+                (vanna_s2, "Vanna S2", "#6A1B9A", "dot"),
+                (vanna_r1, "Vanna R1", "#FF7043", "dot"),
+                (vanna_r2, "Vanna R2", "#F4511E", "dot"),
+            ]
+
+            for strike_value, label, color, dash in level_lines:
+                if strike_value:
+                    fig_levels.add_vline(
+                        x=strike_value,
+                        line_color=color,
+                        line_dash=dash,
+                        annotation_text=label,
+                        annotation_position="top right"
+                    )
+
+            fig_levels.add_vline(
+                x=current,
+                line_color="#2196F3",
+                line_width=3,
+                annotation_text="Spot",
+                annotation_position="top right"
+            )
+
+            for wall in gamma_walls:
+                fig_levels.add_vline(
+                    x=wall['strike'],
+                    line_color="#00E676" if wall['type'] == 'support' else "#FF5252",
+                    line_dash="solid",
+                    annotation_text=f"Gamma {wall['type'].title()}",
+                    annotation_position="bottom right"
+                )
+
+            for hot in vanna_hotspots:
+                fig_levels.add_trace(
+                    go.Scatter(
+                        x=[hot['strike']],
+                        y=[hot['net_vanna'] / 1e6],
+                        mode='markers+text',
+                        name="Vanna Hotspot",
+                        text=[f"{hot['net_vanna']/1e6:.1f}M"],
+                        textposition="top center",
+                        marker=dict(color="#FFD54F", size=10, symbol="diamond"),
+                    ),
+                    secondary_y=True,
+                )
+
+            fig_levels.update_layout(
+                title=dict(
+                    text=f"<b>{symbol} Options Hedge Map</b>",
+                    x=0.5,
+                    font=dict(size=15)
+                ),
+                barmode='relative',
+                bargap=0.02,
+                height=520,
+                template='plotly_dark',
+                hovermode='x unified',
+                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0),
+                margin=dict(l=80, r=80, t=60, b=50),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(30,30,30,1)'
+            )
+
+            fig_levels.update_xaxes(title_text="Strike ($)")
+            fig_levels.update_yaxes(title_text="Net Gamma (Millions $ Notional)", secondary_y=False)
+            fig_levels.update_yaxes(title_text="Net Vanna (Millions $ Notional)", secondary_y=True)
+
+            st.plotly_chart(fig_levels, use_container_width=True)
 
         # Chart shows only zones and current price
         st.markdown("""
