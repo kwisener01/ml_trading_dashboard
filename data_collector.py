@@ -1,10 +1,12 @@
-import requests
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import time
 import json
 import os
+import time
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
+
+import numpy as np
+import pandas as pd
+import requests
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -15,13 +17,30 @@ class TradierDataCollector:
     Collects historical and real-time data from Tradier API for ML model training
     """
     
-    def __init__(self, api_token, use_sandbox=False):
+    def __init__(self, api_token, use_sandbox=False, timeout: int = 10):
         self.api_token = api_token
         self.base_url = "https://sandbox.tradier.com/v1" if use_sandbox else "https://api.tradier.com/v1"
         self.headers = {
             'Authorization': f'Bearer {api_token}',
             'Accept': 'application/json'
         }
+        # Protect API calls from hanging indefinitely
+        self.timeout = timeout
+
+    def _request_json(self, url: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """Perform a GET request with consistent timeout and error handling."""
+        try:
+            response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as exc:
+            print(f"[ERROR] Request failed for {url}: {exc}")
+            return None
+
+        try:
+            return response.json()
+        except ValueError:
+            print(f"[ERROR] Non-JSON response from {url}: {response.text[:200]}")
+            return None
     
     def get_historical_quotes(self, symbol, start_date, end_date, interval='daily'):
         """
@@ -35,34 +54,30 @@ class TradierDataCollector:
             'end': end_date,
             'interval': interval
         }
-        
-        response = requests.get(url, headers=self.headers, params=params)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if 'history' in data and data['history']:
-                # Handle both 'day' and 'data' keys
-                history_data = data['history'].get('day') or data['history'].get('data')
-                if history_data:
-                    df = pd.DataFrame(history_data)
-                    # Handle both 'date' and 'time' column names
-                    if 'date' in df.columns:
-                        df['date'] = pd.to_datetime(df['date'])
-                    elif 'time' in df.columns:
-                        df['date'] = pd.to_datetime(df['time'])
-                    df = df.sort_values('date')
-                    
-                    # Ensure required columns exist
-                    required = ['open', 'high', 'low', 'close', 'volume']
-                    if all(col in df.columns for col in required):
-                        return df
-                    else:
-                        print(f"Missing required columns in response")
-                        print(f"Available columns: {df.columns.tolist()}")
-        
-        print(f"Error getting historical data: {response.status_code}")
-        if response.status_code != 200:
-            print(f"Response: {response.text}")
+
+        data = self._request_json(url, params)
+
+        if data and 'history' in data and data['history']:
+            # Handle both 'day' and 'data' keys
+            history_data = data['history'].get('day') or data['history'].get('data')
+            if history_data:
+                df = pd.DataFrame(history_data)
+                # Handle both 'date' and 'time' column names
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'])
+                elif 'time' in df.columns:
+                    df['date'] = pd.to_datetime(df['time'])
+                df = df.sort_values('date')
+
+                # Ensure required columns exist
+                required = ['open', 'high', 'low', 'close', 'volume']
+                if all(col in df.columns for col in required):
+                    return df
+                else:
+                    print(f"Missing required columns in response")
+                    print(f"Available columns: {df.columns.tolist()}")
+
+        print("Error getting historical data")
         return pd.DataFrame()
     
     def get_intraday_quotes(self, symbol, start_time, end_time, interval='5min'):
@@ -79,64 +94,58 @@ class TradierDataCollector:
             'session_filter': 'all'
         }
 
-        response = requests.get(url, headers=self.headers, params=params)
+        data = self._request_json(url, params)
 
-        if response.status_code == 200:
-            data = response.json()
-            if 'series' in data and data['series'] and 'data' in data['series']:
-                series_data = data['series']['data']
+        if data and 'series' in data and data['series'] and 'data' in data['series']:
+            series_data = data['series']['data']
 
-                # Handle case where data is a dict with scalar values or empty
-                if isinstance(series_data, dict):
-                    # If it's a dict, check if it has list values (proper data)
-                    if series_data and any(isinstance(v, list) for v in series_data.values()):
-                        df = pd.DataFrame(series_data)
-                    elif series_data:
-                        # Single record returned as dict with scalar values
-                        df = pd.DataFrame([series_data])
-                    else:
-                        print(f"Warning: Empty data dict returned for {symbol}")
-                        return pd.DataFrame()
-                elif isinstance(series_data, list):
-                    # Normal case: list of records
-                    if series_data:
-                        df = pd.DataFrame(series_data)
-                    else:
-                        print(f"Warning: Empty data list returned for {symbol}")
-                        return pd.DataFrame()
+            # Handle case where data is a dict with scalar values or empty
+            if isinstance(series_data, dict):
+                # If it's a dict, check if it has list values (proper data)
+                if series_data and any(isinstance(v, list) for v in series_data.values()):
+                    df = pd.DataFrame(series_data)
+                elif series_data:
+                    # Single record returned as dict with scalar values
+                    df = pd.DataFrame([series_data])
                 else:
-                    print(f"Warning: Unexpected data type: {type(series_data)}")
+                    print(f"Warning: Empty data dict returned for {symbol}")
                     return pd.DataFrame()
-
-                # Ensure time column exists before converting
-                if 'time' in df.columns:
-                    df['time'] = pd.to_datetime(df['time'])
-                    return df
+            elif isinstance(series_data, list):
+                # Normal case: list of records
+                if series_data:
+                    df = pd.DataFrame(series_data)
                 else:
-                    print(f"Warning: 'time' column missing in response for {symbol}")
-                    print(f"Available columns: {df.columns.tolist()}")
+                    print(f"Warning: Empty data list returned for {symbol}")
                     return pd.DataFrame()
+            else:
+                print(f"Warning: Unexpected data type: {type(series_data)}")
+                return pd.DataFrame()
 
-        print(f"Error getting intraday data: {response.status_code}")
-        if response.status_code != 200:
-            print(f"Response: {response.text}")
+            # Ensure time column exists before converting
+            if 'time' in df.columns:
+                df['time'] = pd.to_datetime(df['time'])
+                return df
+            else:
+                print(f"Warning: 'time' column missing in response for {symbol}")
+                print(f"Available columns: {df.columns.tolist()}")
+                return pd.DataFrame()
+
+        print("Error getting intraday data")
         return pd.DataFrame()
     
     def get_realtime_quote(self, symbols):
         """Get real-time quote data"""
         url = f"{self.base_url}/markets/quotes"
         params = {'symbols': ','.join(symbols) if isinstance(symbols, list) else symbols}
-        
-        response = requests.get(url, headers=self.headers, params=params)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if 'quotes' in data and 'quote' in data['quotes']:
-                quotes = data['quotes']['quote']
-                if not isinstance(quotes, list):
-                    quotes = [quotes]
-                return pd.DataFrame(quotes)
-        
+
+        data = self._request_json(url, params)
+
+        if data and 'quotes' in data and 'quote' in data['quotes']:
+            quotes = data['quotes']['quote']
+            if not isinstance(quotes, list):
+                quotes = [quotes]
+            return pd.DataFrame(quotes)
+
         return pd.DataFrame()
     
     def get_option_chain_with_greeks(self, symbol, expiration):
@@ -147,21 +156,19 @@ class TradierDataCollector:
             'expiration': expiration,
             'greeks': 'true'
         }
-        
-        response = requests.get(url, headers=self.headers, params=params)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if 'options' in data and 'option' in data['options']:
-                df = pd.DataFrame(data['options']['option'])
-                
-                # Expand Greeks into separate columns
-                if 'greeks' in df.columns:
-                    greeks_df = pd.json_normalize(df['greeks'])
-                    df = pd.concat([df.drop('greeks', axis=1), greeks_df], axis=1)
-                
-                return df
-        
+
+        data = self._request_json(url, params)
+
+        if data and 'options' in data and 'option' in data['options']:
+            df = pd.DataFrame(data['options']['option'])
+
+            # Expand Greeks into separate columns
+            if 'greeks' in df.columns:
+                greeks_df = pd.json_normalize(df['greeks'])
+                df = pd.concat([df.drop('greeks', axis=1), greeks_df], axis=1)
+
+            return df
+
         return pd.DataFrame()
     
     def get_vix_data(self, start_date, end_date):
