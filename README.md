@@ -106,16 +106,6 @@ files_ml_system/
 - **Paper trading & guardrails**: Run in a paper account first, compare expected vs. realized P&L, and add kill-switch conditions (e.g., stop after consecutive losses or slippage spikes).
 - **Alternative data (dark pools)**: Dark pool prints/levels are not collected here; you'd need a feed (institutional tape, dark pool summaries) and a parser to overlay those levels on the dashboard.
 - **0DTE options depth/flow**: The dashboard only computes Vanna levels from Tradier quotes; it does not track zero-DTE gamma walls or large option strikes. Integrating a high-granularity options order-flow/oi feed and summarizing the top strikes by expiry would be required.
-- **Gamma walls & large strikes (where they would show)**: The current UI never renders gamma walls or the biggest call/put strikes—`calculate_options_flow_data` in `predictor.py` leaves those fields as placeholders because the Tradier chain feed lacks the depth needed for reliable walls. You would need to add an options flow provider (OI + volume by strike/expiry) and then plot those levels alongside the Vanna lines on the intraday chart.
-
-## How accurate are the gamma and vanna levels?
-
-- **Dependent on Tradier depth and Greeks**: Both gamma and vanna exposures are derived from a single nearest-dated Tradier options chain. If Tradier omits Greeks the code falls back to a fixed 0.25 IV assumption, so exposures can diverge from actual market hedging flows.【F:gex_calculator.py†L98-L139】【F:gex_calculator.py†L201-L274】
-- **Single-expiration snapshot**: The calculator only looks at the closest 0DTE/1DTE expiry, so it misses size resting in later expirations that often anchor price; walls may move intraday as OI updates.【F:gex_calculator.py†L98-L139】【F:gex_calculator.py†L201-L274】
-- **UI fallbacks when data fails**: The dashboard example panel substitutes simple recent highs/lows as “vanna” levels if it can’t load options data, which are illustrative only—not dealer positioning.【F:dashboard.py†L1173-L1234】
-- **No dark pool or flow enrichment**: Put/Call walls and dark-pool-derived levels remain placeholders in `calculate_options_flow_data`, so there’s no confirmation from flow or hidden liquidity to validate the computed vanna/gamma levels.【F:predictor.py†L154-L219】
-
-Treat the current gamma/vanna markers as rough guides; verifying them against a richer options flow feed (with per-strike OI/volume across expirations) is needed before trading on them.
 
 ## Disclaimer
 
