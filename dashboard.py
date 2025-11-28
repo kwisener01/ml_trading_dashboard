@@ -90,7 +90,7 @@ st.markdown("""
 
 # Title
 st.title("🤖 ML Trading Dashboard")
-st.caption("Version 1.3.0 | Last Updated: 2025-11-28 - Enhanced label visibility & UI improvements")
+st.caption("Version 1.3.1 | Last Updated: 2025-11-28 - Removed target/stop levels, enhanced label visibility")
 st.markdown("---")
 
 # Sidebar
@@ -706,44 +706,6 @@ if 'predictions' in st.session_state:
             )
         )
 
-        # Profit Target - only if valid
-        if pred_high and level_valid(pred_high):
-            upside_pct = ((pred_high - current) / current * 100)
-            fig.add_hline(
-                y=pred_high,
-                line_dash="dot",
-                line_color="#00E676",
-                line_width=2,
-                annotation_text=f"<b>TARGET: ${pred_high:.2f}</b> (+{upside_pct:.1f}%)",
-                annotation_position="right",
-                annotation=dict(
-                    font=dict(size=12, color="white", family="Arial"),
-                    bgcolor="#00C853",
-                    bordercolor="white",
-                    borderwidth=2,
-                    borderpad=4
-                )
-            )
-
-        # Stop Loss - only if valid
-        if pred_low and level_valid(pred_low):
-            downside_pct = ((current - pred_low) / current * 100)
-            fig.add_hline(
-                y=pred_low,
-                line_dash="dot",
-                line_color="#FF5252",
-                line_width=2,
-                annotation_text=f"<b>STOP: ${pred_low:.2f}</b> (-{downside_pct:.1f}%)",
-                annotation_position="right",
-                annotation=dict(
-                    font=dict(size=12, color="white", family="Arial"),
-                    bgcolor="#D50000",
-                    bordercolor="white",
-                    borderwidth=2,
-                    borderpad=4
-                )
-            )
-
         # Add Vanna resistance levels (if available and valid) - Negative Vanna = Repellent
         if vanna_r1 and level_valid(vanna_r1):
             strength = pred.get('vanna_resistance_1_strength')
@@ -872,14 +834,6 @@ if 'predictions' in st.session_state:
                     borderwidth=2,
                     borderpad=3
                 )
-            )
-
-        # Fill area between profit target and stop loss - only if both valid
-        if pred_high and pred_low and level_valid(pred_high) and level_valid(pred_low):
-            fig.add_hrect(
-                y0=pred_low, y1=pred_high,
-                fillcolor="green", opacity=0.1,
-                line_width=0
             )
 
         # Calculate y-axis range centered on current price and all levels
